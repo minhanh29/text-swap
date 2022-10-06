@@ -1,0 +1,6 @@
+dataset/
+datasets/
+custom_feed/
+logs
+__pycache__
+__MACOSX
