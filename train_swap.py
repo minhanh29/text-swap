@@ -9,11 +9,12 @@ from tqdm import tqdm
 import torchvision.transforms.functional as F
 from skimage.transform import resize
 from skimage import io
-from model import Generator, Discriminator, Vgg19, text_conversion_net, mask_extraction_net
+from model import Generator, Discriminator, Vgg19, text_conversion_net_light, mask_extraction_net
 from torchvision import models, transforms, datasets
-from loss import build_text_conversion_loss, build_discriminator_loss, build_dice_loss
+from loss import build_text_conversion_loss, build_discriminator_loss, build_dice_loss, build_vgg_loss
 from datagen import datagen_text_conversion, example_dataset, To_tensor
 from torch.utils.data import Dataset, DataLoader
+from inpaint_loss import TextSwapLoss
 
 
 def requires_grad(model, flag=True):
@@ -44,14 +45,16 @@ def custom_collate(batch):
 
         i_t, i_s, mask_t = item
 
+        i_t = resize(i_t, to_scale, preserve_range=True)
         i_s = resize(i_s, to_scale, preserve_range=True)
         mask_t = np.expand_dims(resize(mask_t, to_scale, preserve_range=True), axis = -1)
-        i_t = np.expand_dims(resize(i_t, to_scale, preserve_range=True), axis = -1)
+        # i_t = np.expand_dims(resize(i_t, to_scale, preserve_range=True), axis = -1)
 
 
+        i_t = i_t.transpose((2, 0, 1))
         i_s = i_s.transpose((2, 0, 1))
         mask_t = mask_t.transpose((2, 0, 1))
-        i_t = i_t.transpose((2, 0, 1))
+        # i_t = i_t.transpose((2, 0, 1))
 
         i_t_batch.append(i_t)
         i_s_batch.append(i_s)
@@ -61,9 +64,10 @@ def custom_collate(batch):
     i_s_batch = np.stack(i_s_batch)
     mask_t_batch = np.stack(mask_t_batch)
 
+    i_t_batch = torch.from_numpy(i_t_batch.astype(np.float32) / 127.5 - 1.)
     i_s_batch = torch.from_numpy(i_s_batch.astype(np.float32) / 127.5 - 1.)
     mask_t_batch =torch.from_numpy(mask_t_batch.astype(np.float32) / 255.)
-    i_t_batch =torch.from_numpy(i_t_batch.astype(np.float32) / 255.)
+    # i_t_batch =torch.from_numpy(i_t_batch.astype(np.float32) / 255.)
 
 
     return [i_t_batch, i_s_batch, mask_t_batch]
@@ -91,7 +95,8 @@ def main():
 
     print_log('training start.', content_color = PrintColor['yellow'])
 
-    G = mask_extraction_net(in_channels=2).cuda()
+    G = text_conversion_net_light(in_channels=1).cuda()
+    g_loss_func = TextSwapLoss()
 
     mask_net = mask_extraction_net(in_channels=3).cuda()
     checkpoint = torch.load(cfg.mask_ckpt_path)
@@ -163,22 +168,28 @@ def main():
         mask_s = mask_net(i_s)
         mask_s = mask_s.detach()
         mask_s = K(mask_s)
-        o_t = G(torch.cat((i_t, mask_s), dim=1))
+        o_t = G(i_t, mask_s)
 
         o_t = K(o_t)
 
         l_m_l1 = torch.mean(torch.abs(mask_t - o_t))
         l_dice = build_dice_loss(mask_t, o_t)
         g_loss = l_m_l1 + l_dice
+        # g_loss, loss_dict = g_loss_func(o_t, mask_t)
         g_loss.backward()
         G_solver.step()
 
         if ((step+1) % cfg.write_log_interval == 0):
+            # print('Iter: {}/{} | L: {:.4f} | Dice: {:.4f} | Per: {:.4f} | Style: {:.4f}'.format(
             print('Iter: {}/{} | L: {:.4f} | Dice: {:.4f}'.format(
                 step+1,
                 cfg.max_iter,
                 l_m_l1.item(),
                 l_dice.item()))
+                # loss_dict["l1"].item(),
+                # loss_dict["dice"].item(),
+                # loss_dict["perc"].item(),
+                # loss_dict["style"].item()))
 
         if ((step+1) % cfg.gen_example_interval == 0) or step == 0:
             savedir = os.path.join(cfg.example_result_dir, train_name, 'iter-' + str(step+1).zfill(len(str(cfg.max_iter))))
@@ -186,20 +197,23 @@ def main():
             i_s = i_s.to('cpu')
             o_t = o_t.to('cpu')
             mask_s = mask_s.to('cpu')
+            mask_t = mask_t.to('cpu')
             if not os.path.exists(savedir):
                 os.makedirs(savedir)
 
             cnt = 0
-            for i_t_img, i_s_img, o_t_img, mask_s_img in zip(i_t, i_s, o_t, mask_s):
+            for i_t_img, i_s_img, o_t_img, mask_s_img, mask_t_img in zip(i_t, i_s, o_t, mask_s, mask_t):
                 i_t_img = F.to_pil_image((i_t_img + 1)/2)
                 i_s_img = F.to_pil_image((i_s_img + 1)/2)
                 o_t_img = F.to_pil_image(o_t_img)
                 mask_s_img = F.to_pil_image(mask_s_img)
+                mask_t_img = F.to_pil_image(mask_t_img)
 
                 i_t_img.save(os.path.join(savedir, f'i_t_{cnt}.png'))
                 i_s_img.save(os.path.join(savedir, f'i_s_{cnt}.png'))
                 o_t_img.save(os.path.join(savedir, f'o_t_{cnt}.png'))
                 mask_s_img.save(os.path.join(savedir, f'mask_s_{cnt}.png'))
+                mask_t_img.save(os.path.join(savedir, f'mask_t_{cnt}.png'))
                 cnt += 1
 
 if __name__ == '__main__':

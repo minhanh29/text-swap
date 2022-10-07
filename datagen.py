@@ -80,7 +80,7 @@ class datagen_text_conversion(Dataset):
 
         img_name = self.name_list[idx]
 
-        i_t = io.imread(os.path.join(cfg.data_dir, cfg.i_t_bin_dir, img_name), as_gray=True)
+        i_t = io.imread(os.path.join(cfg.data_dir, cfg.i_t_dir, img_name))
         i_s = io.imread(os.path.join(cfg.data_dir, cfg.i_s_dir, img_name))
         mask_t = io.imread(os.path.join(cfg.data_dir, cfg.mask_t_dir, img_name), as_gray = True)
 

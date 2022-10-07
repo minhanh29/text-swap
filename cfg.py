@@ -20,7 +20,7 @@ show_loss_interval = 10
 write_log_interval = 1
 save_ckpt_interval = 500
 gen_example_interval = 500
-checkpoint_savedir = '/vtca/checkpoints/vits/swap/'
+checkpoint_savedir = '/vtca/checkpoints/vits/swap_l1/'
 bg_checkpoint_savedir = '/vtca/checkpoints/vits/bg/'
 # ckpt_path = './logs/trained_final_5M_.model'
 ckpt_path = None
@@ -29,7 +29,7 @@ bg_ckpt_path = "/vtca/checkpoints/vits/bg/bg-train_step-0001.model"
 mask_ckpt_path = "/vtca/checkpoints/vits/mask/text-train_step-50000.model"
 
 # data
-batch_size = 32
+batch_size = 64
 bg_batch_size = 64
 data_shape = [64, None]
 data_dir = './dataset/'

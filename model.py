@@ -131,29 +131,61 @@ class light_encoder_net(torch.nn.Module):
         self.cnum = 16
         self.get_feature_map = get_feature_map
         self._conv1_1 = Conv_bn_block(in_channels = in_channels, out_channels = self.cnum, kernel_size = 3, stride = 1, padding = 1)
+
+        self._conv1_2 = Conv_bn_block(in_channels =self.cnum, out_channels = self.cnum, kernel_size = 3, stride = 1, padding = 1)
+
+        #--------------------------
+
         self._pool1 = torch.nn.Conv2d(in_channels = self.cnum, out_channels = 2 * self.cnum, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
+
+        self._conv2_1 = Conv_bn_block(in_channels = 2* self.cnum, out_channels = 2*self.cnum, kernel_size = 3, stride = 1, padding = 1)
+
+        self._conv2_2 = Conv_bn_block(in_channels = 2* self.cnum, out_channels = 2*self.cnum, kernel_size = 3, stride = 1, padding = 1)
+
+        #---------------------------
 
         self._pool2 = torch.nn.Conv2d(in_channels = 2*self.cnum, out_channels = 4* self.cnum, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
 
+        self._conv3_1 = Conv_bn_block(in_channels = 4* self.cnum, out_channels = 4*self.cnum, kernel_size = 3, stride = 1, padding = 1)
+
+        self._conv3_2 = Conv_bn_block(in_channels = 4* self.cnum, out_channels = 4*self.cnum, kernel_size = 3, stride = 1, padding = 1)
+
+        #---------------------------
+
         self._pool3 = torch.nn.Conv2d(in_channels = 4*self.cnum, out_channels = 8* self.cnum, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
+
+        self._conv4_1 = Conv_bn_block(in_channels = 8* self.cnum, out_channels = 8*self.cnum, kernel_size = 3, stride = 1, padding = 1)
+
+        self._conv4_2 = Conv_bn_block(in_channels = 8* self.cnum, out_channels = 8*self.cnum, kernel_size = 3, stride = 1, padding = 1)
 
     def forward(self, x):
 
         x = self._conv1_1(x)
+        x = self._conv1_2(x)
 
         x = torch.nn.functional.leaky_relu(self._pool1(x),negative_slope=0.2)
+        x = self._conv2_1(x)
+        x = self._conv2_2(x)
+
         f1 = x
 
         x = torch.nn.functional.leaky_relu(self._pool2(x),negative_slope=0.2)
+        x = self._conv3_1(x)
+        x = self._conv3_2(x)
+
         f2 = x
 
         x = torch.nn.functional.leaky_relu(self._pool3(x),negative_slope=0.2)
+        x = self._conv4_1(x)
+        x = self._conv4_2(x)
+
 
         if self.get_feature_map:
             return x, [f2, f1]
 
         else:
             return x
+
 
 class encoder_net(torch.nn.Module):
 
@@ -342,50 +374,32 @@ class decoder_net(torch.nn.Module):
             return x
 
 
-class text_conversion_net_seft_atn(torch.nn.Module):
+class text_conversion_net_light(torch.nn.Module):
 
     def __init__(self, in_channels):
         super().__init__()
 
-        self.cnum = 16
-        self._t_encoder = light_encoder_net(in_channels, get_feature_map=True)
+        self.cnum = 32
+        self._t_encoder = light_encoder_net(3*in_channels, get_feature_map=True)
         self._s_encoder = light_encoder_net(in_channels, get_feature_map=True)
 
-        self._t_decoder = decoder_net(32*self.cnum)
+        self._a1 = Conv_bn_block(in_channels =self.cnum*2, out_channels = self.cnum*2, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
+        self._a2 = Conv_bn_block(in_channels =self.cnum*6, out_channels = self.cnum*4, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
+        self._a3 = Conv_bn_block(in_channels =self.cnum*12, out_channels = self.cnum * 8, kernel_size = 3, stride = 1, padding = 1)
 
-        self._t_out = torch.nn.Conv2d(2 * self.cnum, 3, kernel_size = 3, stride = 1, padding = 1)
-
-        self.attn1 = Self_Attn(self.cnum * 4, 'relu')
-        self.pool1 = torch.nn.Conv2d(in_channels = self.cnum * 4, out_channels = 8 * self.cnum, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
-        self.attn2 = Self_Attn(self.cnum * 8,  'relu')
-        self.pool2 = torch.nn.Conv2d(in_channels = self.cnum * 16, out_channels = 16 * self.cnum, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
-        self.attn3 = Self_Attn(self.cnum * 16,  'relu')
+        self._t_decoder = decoder_net(8*self.cnum)
+        self._t_out = torch.nn.Conv2d(self.cnum, 1, kernel_size = 3, stride = 1, padding = 1)
 
     def forward(self, x_t, x_s):
-
         x_t, t_feats = self._t_encoder(x_t)
-        # x_t = self._t_res(x_t)
-
         x_s, s_feats = self._s_encoder(x_s)
-        # x_s = self._s_res(x_s)
 
-        # seft attention
-        t_feat2, t_feat1 = t_feats
-        s_feat2, s_feat1 = s_feats
-        feat1 = torch.cat((t_feat1, s_feat1), dim = 1)
-        attn1, _ = self.attn1(feat1)
-        attn1 = self.pool1(attn1)
-        feat2 = torch.cat((t_feat2, s_feat2), dim = 1)
-        attn2, _ = self.attn2(feat2)
-        attn2 = self.pool2(torch.cat((attn1, attn2), dim = 1))
-
-        x = torch.cat((x_t, x_s), dim = 1)
-
-        x, _ = self.attn3(x)
-        x = torch.cat((x, attn2), dim = 1)
+        a = self._a1(torch.cat((t_feats[1], s_feats[1]), dim=1))
+        a = self._a2(torch.cat((t_feats[0], s_feats[0], a), dim=1))
+        x = self._a3(torch.cat((x_t, x_s, a), dim = 1))
 
         y_t = self._t_decoder(x, fuse = None)
-        y_t_out = torch.tanh(self._t_out(y_t))
+        y_t_out = torch.sigmoid(self._t_out(y_t))
 
         return y_t_out
 

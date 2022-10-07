@@ -51,6 +51,38 @@ class InpaintingLoss(nn.Module):
 
         return loss, {'valid': valid_loss, 'hole': hole_loss, 'comp_l1': comp_l1_loss, 'perc': perc_loss, 'style': style_loss, "tv": tv_loss}
 
+class TextSwapLoss(nn.Module):
+    def __init__(self):
+        super(TextSwapLoss, self).__init__()
+        self.l1 = nn.L1Loss()
+        # default extractor is VGG16
+        self.extractor = VGG16FeatureExtractor().cuda()
+
+    def forward(self, o_t, mask_t):
+        o_t_3 = torch.cat((o_t, o_t, o_t), dim=1)
+        mask_t_3 = torch.cat((mask_t, mask_t, mask_t), dim=1)
+
+        l_m_l1 = torch.mean(torch.abs(mask_t - o_t))
+        l_dice = build_dice_loss(mask_t, o_t)
+
+        feats_out = self.extractor(o_t_3)
+        feats_gt = self.extractor(mask_t_3)
+
+        perc_loss = 0.0
+        style_loss = 0.0
+        # Calculate the L1Loss for each feature map
+        for i in range(3):
+            perc_loss += self.l1(feats_out[i], feats_gt[i])
+            style_loss += self.l1(gram_matrix(feats_out[i]),
+                                  gram_matrix(feats_gt[i]))
+
+        perc_loss *= cfg.perc_coef
+        loss = l_m_l1 + l_dice + perc_loss + style_loss
+        # loss = l_m_l1 + l_dice
+
+        return loss, {'l1': l_m_l1, 'dice': l_dice, 'perc': perc_loss, 'style': style_loss}
+        # return loss, {'l1': l_m_l1, 'dice': l_dice}
+
 
 # The network of extracting the feature for perceptual and style loss
 class VGG16FeatureExtractor(nn.Module):
