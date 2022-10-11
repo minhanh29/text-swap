@@ -1,4 +1,5 @@
 import torch
+import os
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from gen_font_data import TextDataset
@@ -27,7 +28,7 @@ checkpoint = torch.load("./weights/18850.pth", map_location="cpu")
 model.load_state_dict(checkpoint['model'])
 
 train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=False)
-test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False)
+test_dataloader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 loss_func = torch.nn.CrossEntropyLoss()
 # torch.save({
