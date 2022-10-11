@@ -8,7 +8,7 @@ from tqdm import tqdm
 import torchvision.transforms.functional as F
 from skimage.transform import resize
 from skimage import io
-from model import Generator, Discriminator, Vgg19, fusion_net_alone, mask_extraction_net
+from model import Generator, Discriminator, Vgg19, fusion_net_alone, mask_extraction_net, fusion_net_combine
 from torchvision import models, transforms, datasets
 from loss import build_generator_loss, build_discriminator_loss, build_gan_loss, build_vgg_loss, build_l1_loss
 from datagen import datagen_srnet, example_dataset, To_tensor
@@ -114,8 +114,8 @@ def main():
 
     print_log('training start.', content_color = PrintColor['yellow'])
 
-    G = fusion_net_alone(in_channels = 8).cuda()
-    # D1 = Discriminator(in_channels = 6).cuda()
+    G = fusion_net_combine(in_channels=7).cuda()
+    D = Discriminator(in_channels = 6).cuda()
     g_loss_func = FusionLoss()
 
     mask_net = mask_extraction_net(in_channels=3).cuda()
@@ -126,7 +126,7 @@ def main():
     # vgg_features = Vgg19().cuda()
 
     G_solver = torch.optim.Adam(G.parameters(), lr=cfg.learning_rate, betas = (cfg.beta1, cfg.beta2))
-    # D1_solver = torch.optim.Adam(D1.parameters(), lr=cfg.learning_rate, betas = (cfg.beta1, cfg.beta2))
+    D_solver = torch.optim.Adam(D.parameters(), lr=cfg.learning_rate, betas = (cfg.beta1, cfg.beta2))
 
     if not os.path.isdir(cfg.fuse_checkpoint_savedir):
         os.makedirs(cfg.fuse_checkpoint_savedir)
@@ -135,10 +135,10 @@ def main():
         if cfg.ckpt_path is not None:
             checkpoint = torch.load(cfg.ckpt_path)
             G.load_state_dict(checkpoint['fuse_generator'])
-            # D1.load_state_dict(checkpoint['fuse_discriminator'])
+            D.load_state_dict(checkpoint['fuse_discriminator'])
 
             G_solver.load_state_dict(checkpoint['fuse_g_optimizer'])
-            # D1_solver.load_state_dict(checkpoint['fuse_d_optimizer'])
+            D_solver.load_state_dict(checkpoint['fuse_d_optimizer'])
 
             print('Resuming after loading...')
 
@@ -182,9 +182,9 @@ def main():
             torch.save(
                 {
                     'fuse_generator': G.state_dict(),
-                    # 'fuse_discriminator': D1.state_dict(),
+                    'fuse_discriminator': D.state_dict(),
                     'fuse_g_optimizer': G_solver.state_dict(),
-                    # 'fuse_d_optimizer': D1_solver.state_dict(),
+                    'fuse_d_optimizer': D_solver.state_dict(),
                 },
                 cfg.fuse_checkpoint_savedir+f'fuse-train_step-{step+1}.model',
             )
@@ -206,8 +206,8 @@ def main():
         t_f = t_f.cuda()
         mask_t = mask_t.cuda()
 
-        # requires_grad(G, True)
-        # requires_grad(D1, False)
+        requires_grad(G, True)
+        requires_grad(D, False)
 
         G_solver.zero_grad()
 
@@ -215,16 +215,16 @@ def main():
         mask_s = K(mask_s)
         mask_s = mask_s.detach()
 
-        o_f = G(torch.cat((t_b, i_s, mask_s, mask_t), dim=1))
+        o_f = G(torch.cat((t_b, i_s, mask_s), dim=1), i_t)
         o_f = K(o_f)
 
-        # i_df_pred = torch.cat((o_f, i_s), dim = 1)
-        # o_df_pred = D1(i_df_pred)
+        i_df_pred = torch.cat((o_f, i_t), dim = 1)
+        o_df_pred = D(i_df_pred)
 
         # i_vgg = torch.cat((t_f, o_f), dim = 0)
         # o_vgg = vgg_features(i_vgg)
 
-        # l_f_gan = build_gan_loss(o_df_pred)
+        l_f_gan = torch.mean((1. - o_df_pred) ** 2)
         # l_hole = 5 * build_l1_loss(mask_t * t_f, mask_t * o_f)
         # l_f_l1 = build_l1_loss(t_f, o_f)
         # l_f_vgg_per, l_f_vgg_style = build_vgg_loss(o_vgg)
@@ -232,39 +232,44 @@ def main():
         # l_f_vgg_style =  l_f_vgg_style
         # # g_loss = 0.07 * l_f_gan + 0.05 * l_f_vgg_per + 500 * l_f_vgg_style + l_f_l1
         # g_loss = 0.05 * l_f_vgg_per + 500 * l_f_vgg_style + l_f_l1 + l_hole
-        g_loss, (l_f_l1, l_hole, l_f_vgg_per, l_f_vgg_style) = g_loss_func(t_f, o_f, mask_t)
+        my_loss, (l_f_l1, l_hole, l_f_vgg_per, l_f_vgg_style) = g_loss_func(t_f, o_f, mask_t)
+        g_loss = my_loss + l_f_gan
 
         g_loss.backward()
         G_solver.step()
 
-        # requires_grad(G, False)
-        # requires_grad(D1, True)
+        requires_grad(G, False)
+        requires_grad(D, True)
 
-        # D1_solver.zero_grad()
-        # o_f = o_f.detach()
+        D_solver.zero_grad()
+        o_f = o_f.detach()
 
-        # i_df_true = torch.cat((t_f, i_s), dim = 1)
-        # i_df_pred = torch.cat((o_f, i_s), dim = 1)
+        i_df_true = torch.cat((t_f, i_t), dim = 1)
+        i_df_pred = torch.cat((o_f, i_t), dim = 1)
 
-        # o_df_true = D1(i_df_true)
-        # o_df_pred = D1(i_df_pred)
+        o_df_true = D(i_df_true)
+        o_df_pred = D(i_df_pred)
 
-        # df_real_loss = -torch.mean(torch.log(torch.clamp(o_df_true, cfg.epsilon, 1.0)))
-        # df_real_loss.backward()
+        df_real_loss = torch.mean((1 - o_df_true) ** 2)
+        df_real_loss.backward()
 
-        # df_fake_loss = -torch.mean(torch.log(torch.clamp(1.0 - o_df_pred, cfg.epsilon, 1.0)))
-        # df_fake_loss.backward()
+        df_fake_loss = torch.mean(o_df_pred ** 2)
+        df_fake_loss.backward()
         # df_loss = df_real_loss + df_fake_loss
 
-        # D1_solver.step()
+        D_solver.step()
+        clip_grad(D)
 
         if ((step+1) % cfg.write_log_interval == 0):
-            print('Iter: {}/{} | L1: {:.4f} | H {:.4f} | Per: {:.4f} | Style: {:.4f}'
+            print('Iter: {}/{} | L1: {:.4f} | H {:.4f} | Per: {:.4f} | Style: {:.4f} | G: {:.4f} | R: {:.4f} | F: {:.4f}'
                   .format(step+1, cfg.max_iter,
                  l_f_l1.item(),
                  l_hole.item(),
                  l_f_vgg_per.item(),
-                 l_f_vgg_style.item()))
+                 l_f_vgg_style.item(),
+                 l_f_gan.item(),
+                 df_real_loss.item(),
+                 df_fake_loss.item()))
             # print('Iter: {}/{} | G: {:.4f} | R: {:.4f} | F: {:.4f} | L1 {:.4f} | Per: {:.4f} | Style: {:.4f}'
             #       .format(step+1, cfg.max_iter,
             #       l_f_gan.item(),

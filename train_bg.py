@@ -10,7 +10,7 @@ from tqdm import tqdm
 import torchvision.transforms.functional as F
 from skimage.transform import resize
 from skimage import io
-from model import Generator, Discriminator, Vgg19, inpainting_net_mask, mask_extraction_net
+from model import Generator, Discriminator, Vgg19, inpainting_net_mask, mask_extraction_net, inpainting_net_mask_dilated
 from torchvision import models, transforms, datasets
 from loss import build_bg_loss, build_discriminator_loss
 from datagen import datagen_bg, example_dataset, To_tensor
@@ -92,7 +92,8 @@ def main():
 
     print_log('training start.', content_color = PrintColor['yellow'])
 
-    G = inpainting_net_mask(in_channels=4).cuda()
+    G = inpainting_net_mask_dilated(in_channels=4).cuda()
+    # G = inpainting_net_mask(in_channels=4).cuda()
     G_solver = torch.optim.Adam(G.parameters(), lr=cfg.learning_rate, betas = (cfg.beta1, cfg.beta2))
     g_loss_func = InpaintingLoss()
 
@@ -101,6 +102,8 @@ def main():
     mask_net.load_state_dict(checkpoint['mask_generator'])
     requires_grad(mask_net, False)
 
+    if not os.path.isdir(cfg.bg_checkpoint_savedir):
+        os.makedirs(cfg.bg_checkpoint_savedir)
     try:
         if cfg.bg_ckpt_path is not None:
             checkpoint = torch.load(cfg.bg_ckpt_path)
@@ -127,8 +130,6 @@ def main():
     for step in range(cfg.max_iter):
         if ((step+1) % cfg.save_ckpt_interval == 0):
             model_list = os.listdir(cfg.bg_checkpoint_savedir)
-            if not os.path.isdir(cfg.bg_checkpoint_savedir):
-                os.makedirs(cfg.bg_checkpoint_savedir)
             model_list = [file for file in model_list if ".model" in file]
             num_ckpts = 5
             if len(model_list) > num_ckpts*2:
