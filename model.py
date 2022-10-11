@@ -380,25 +380,20 @@ class text_conversion_net_light(torch.nn.Module):
         super().__init__()
 
         self.cnum = 32
-        self._t_encoder = light_encoder_net(3*in_channels, get_feature_map=True)
-        self._s_encoder = light_encoder_net(in_channels, get_feature_map=True)
+        self._t_encoder = encoder_net(3*in_channels, get_feature_map=True)
+        self._s_encoder = encoder_net(in_channels)
 
-        self._a1 = Conv_bn_block(in_channels =self.cnum*2, out_channels = self.cnum*2, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
-        self._a2 = Conv_bn_block(in_channels =self.cnum*6, out_channels = self.cnum*4, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
-        self._a3 = Conv_bn_block(in_channels =self.cnum*12, out_channels = self.cnum * 8, kernel_size = 3, stride = 1, padding = 1)
-
-        self._t_decoder = decoder_net(8*self.cnum)
+        self._res = build_res_block(16*self.cnum)
+        self._t_decoder = decoder_net(16*self.cnum, mt=2)
         self._t_out = torch.nn.Conv2d(self.cnum, 1, kernel_size = 3, stride = 1, padding = 1)
 
     def forward(self, x_t, x_s):
         x_t, t_feats = self._t_encoder(x_t)
-        x_s, s_feats = self._s_encoder(x_s)
+        x_s = self._s_encoder(x_s)
 
-        a = self._a1(torch.cat((t_feats[1], s_feats[1]), dim=1))
-        a = self._a2(torch.cat((t_feats[0], s_feats[0], a), dim=1))
-        x = self._a3(torch.cat((x_t, x_s, a), dim = 1))
+        x = self._res(torch.cat((x_t, x_s), dim=1))
 
-        y_t = self._t_decoder(x, fuse = None)
+        y_t = self._t_decoder(x, fuse = [None] + t_feats)
         y_t_out = torch.sigmoid(self._t_out(y_t))
 
         return y_t_out
@@ -474,6 +469,31 @@ class mask_extraction_net(torch.nn.Module):
         return y_sk_out
 
 
+class inpainting_net_mask_dilated(torch.nn.Module):
+
+    def __init__(self, in_channels):
+        super().__init__()
+
+        self.cnum = 32
+        self._encoder = encoder_net(in_channels, get_feature_map = True)
+        self._res = build_dilated_res_block(8*self.cnum)
+
+        self._decoder = decoder_net(16*self.cnum,  get_feature_map = True, mt=2)
+        self._out = torch.nn.Conv2d(self.cnum, 3, kernel_size = 3, stride = 1, padding = 1)
+
+    def forward(self, x, mask, enc_feat):
+        x = torch.cat((x, mask), dim=1)
+        x, f_encoder = self._encoder(x)
+        x = self._res(x)
+
+        x = torch.cat((x, enc_feat), dim=1)
+        x, fs = self._decoder(x, fuse = [None] + f_encoder)
+
+        x = torch.tanh(self._out(x))
+
+        return x, fs
+
+
 class inpainting_net_mask(torch.nn.Module):
 
     def __init__(self, in_channels):
@@ -522,6 +542,54 @@ class inpainting_net(torch.nn.Module):
         x = torch.tanh(self._out(x))
 
         return x, fs
+
+
+class fusion_net_combine(torch.nn.Module):
+    def __init__(self, in_channels, text_in_channels=3):
+        super().__init__()
+        self.cnum = 32
+
+        self._encoder = encoder_net(in_channels, get_feature_map=True)
+        self._text_encoder = encoder_net(text_in_channels)
+        self._res = build_res_block(16*self.cnum)
+
+        self._decoder = decoder_net(16*self.cnum, mt = 2)
+
+        self._out = torch.nn.Conv2d(self.cnum, 3, kernel_size = 3, stride = 1, padding = 1)
+
+    def forward(self, x, text):
+
+        x, feats = self._encoder(x)
+        text = self._text_encoder(text)
+
+        x = self._res(torch.cat((x, text), dim=1))
+
+        x = self._decoder(x, fuse = [None] + feats)
+        x = torch.tanh(self._out(x))
+
+        return x
+
+
+class fusion_net_alone(torch.nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        self.cnum = 32
+
+        self._encoder = encoder_net(in_channels, get_feature_map=True)
+        self._res = build_res_block(8*self.cnum)
+
+        self._decoder = decoder_net(8*self.cnum, mt = 2)
+
+        self._out = torch.nn.Conv2d(self.cnum, 3, kernel_size = 3, stride = 1, padding = 1)
+
+    def forward(self, x):
+
+        x, feats = self._encoder(x)
+        x = self._res(x)
+        x = self._decoder(x, fuse = [None] + feats)
+        x = torch.tanh(self._out(x))
+
+        return x
 
 
 class fusion_net(torch.nn.Module):
@@ -577,23 +645,21 @@ class Discriminator(torch.nn.Module):
     def __init__(self, in_channels):
         super().__init__()
 
-        norm_f = weight_norm
-
         self.cnum = 32
-        self._conv1 = norm_f(torch.nn.Conv2d(in_channels, 64, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2)))
-        self._conv2 = norm_f(torch.nn.Conv2d(64, 128, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2)))
+        self._conv1 = torch.nn.Conv2d(in_channels, 64, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
+        self._conv2 = torch.nn.Conv2d(64, 128, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
 
-        # self._conv2_bn = torch.nn.BatchNorm2d(128)
+        self._conv2_bn = torch.nn.BatchNorm2d(128)
 
-        self._conv3 = norm_f(torch.nn.Conv2d(128, 256, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2)))
+        self._conv3 = torch.nn.Conv2d(128, 256, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
 
-        # self._conv3_bn = torch.nn.BatchNorm2d(256)
+        self._conv3_bn = torch.nn.BatchNorm2d(256)
 
-        self._conv4 = norm_f(torch.nn.Conv2d(256, 512, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2)))
+        self._conv4 = torch.nn.Conv2d(256, 512, kernel_size = 3, stride = 2, padding = calc_padding(temp_shape[0], temp_shape[1], 3, 2))
 
-        # self._conv4_bn = torch.nn.BatchNorm2d(512)
+        self._conv4_bn = torch.nn.BatchNorm2d(512)
 
-        self._conv5 = norm_f(torch.nn.Conv2d(512, 1,  kernel_size = 3, stride = 1, padding = 1))
+        self._conv5 = torch.nn.Conv2d(512, 1,  kernel_size = 3, stride = 1, padding = 1)
 
         # self._conv5_bn = torch.nn.BatchNorm2d(1)
         # self._conv_sigmoid = torch.nn.Sigmoid()
@@ -604,18 +670,18 @@ class Discriminator(torch.nn.Module):
         #     param.requires_grad = False
 
     def forward(self, x):
+        x = torch.nn.functional.leaky_relu(self._conv1(x), negative_slope=0.2)
+        x = self._conv2(x)
+        x = torch.nn.functional.leaky_relu(self._conv2_bn(x), negative_slope=0.2)
+        x = self._conv3(x)
+        x = torch.nn.functional.leaky_relu(self._conv3_bn(x), negative_slope=0.2)
+        x = self._conv4(x)
+        x = torch.nn.functional.leaky_relu(self._conv4_bn(x), negative_slope=0.2)
 
         # x = torch.nn.functional.leaky_relu(self._conv1(x), negative_slope=0.2)
-        # x = self._conv2(x)
-        # x = torch.nn.functional.leaky_relu(self._conv2_bn(x), negative_slope=0.2)
-        # x = self._conv3(x)
-        # x = torch.nn.functional.leaky_relu(self._conv3_bn(x), negative_slope=0.2)
-        # x = self._conv4(x)
-        # x = torch.nn.functional.leaky_relu(self._conv4_bn(x), negative_slope=0.2)
-        x = torch.nn.functional.leaky_relu(self._conv1(x), negative_slope=0.2)
-        x = torch.nn.functional.leaky_relu(self._conv2(x), negative_slope=0.2)
-        x = torch.nn.functional.leaky_relu(self._conv3(x), negative_slope=0.2)
-        x = torch.nn.functional.leaky_relu(self._conv4(x), negative_slope=0.2)
+        # x = torch.nn.functional.leaky_relu(self._conv2(x), negative_slope=0.2)
+        # x = torch.nn.functional.leaky_relu(self._conv3(x), negative_slope=0.2)
+        # x = torch.nn.functional.leaky_relu(self._conv4(x), negative_slope=0.2)
         x = self._conv5(x)
         # x = self._conv5_bn(x)
         # x = self._conv_sigmoid(x)

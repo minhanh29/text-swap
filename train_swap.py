@@ -11,9 +11,10 @@ from skimage.transform import resize
 from skimage import io
 from model import Generator, Discriminator, Vgg19, text_conversion_net_light, mask_extraction_net
 from torchvision import models, transforms, datasets
-from loss import build_text_conversion_loss, build_discriminator_loss, build_dice_loss, build_vgg_loss
+from loss import build_text_conversion_loss, build_discriminator_loss, build_dice_loss, build_vgg_loss, build_gan_loss
 from datagen import datagen_text_conversion, example_dataset, To_tensor
 from torch.utils.data import Dataset, DataLoader
+from torch.nn import DataParallel
 from inpaint_loss import TextSwapLoss
 
 
@@ -97,27 +98,34 @@ def main():
 
     G = text_conversion_net_light(in_channels=1).cuda()
     g_loss_func = TextSwapLoss()
+    D = Discriminator(in_channels=1).cuda()
 
     mask_net = mask_extraction_net(in_channels=3).cuda()
     checkpoint = torch.load(cfg.mask_ckpt_path)
     mask_net.load_state_dict(checkpoint['mask_generator'])
     requires_grad(mask_net, False)
 
-    G_solver = torch.optim.Adam(G.parameters(), lr=cfg.learning_rate, betas = (cfg.beta1, cfg.beta2))
+    G_solver = torch.optim.Adam(G.parameters(), lr=cfg.learning_rate)
+    D_solver = torch.optim.Adam(D.parameters(), lr=cfg.learning_rate)
 
     try:
         if cfg.text_conversion_ckpt_path is not None:
             checkpoint = torch.load(cfg.text_conversion_ckpt_path)
             G.load_state_dict(checkpoint['text_generator'])
             G_solver.load_state_dict(checkpoint['text_g_optimizer'])
+            D.load_state_dict(checkpoint['text_disc'])
+            D_solver.load_state_dict(checkpoint['text_d_optimizer'])
             print('Resuming after loading...')
 
     except FileNotFoundError:
         print('checkpoint not found')
         pass
 
+    G = DataParallel(G).to(device)
+    D = DataParallel(D).to(device)
 
     requires_grad(G, True)
+    requires_grad(D, True)
     gen_loss_val = 0
     grad_loss_val = 0
 
@@ -146,8 +154,10 @@ def main():
 
             torch.save(
                 {
-                    'text_generator': G.state_dict(),
+                    'text_generator': G.module.state_dict(),
                     'text_g_optimizer': G_solver.state_dict(),
+                    'text_disc': D.module.state_dict(),
+                    'text_d_optimizer': D_solver.state_dict(),
                 },
                 cfg.checkpoint_savedir+f'text-train_step-{step+1}.model',
             )
@@ -163,33 +173,63 @@ def main():
         i_s = i_s.cuda()
         mask_t = mask_t.cuda()
 
+        # requires_grad(G, True)
+        # requires_grad(D, False)
         G_solver.zero_grad()
+        D_solver.zero_grad()
 
         mask_s = mask_net(i_s)
-        mask_s = mask_s.detach()
         mask_s = K(mask_s)
+        mask_s = mask_s.detach()
         o_t = G(i_t, mask_s)
 
         o_t = K(o_t)
+        o_pred = D(o_t)
 
-        l_m_l1 = torch.mean(torch.abs(mask_t - o_t))
-        l_dice = build_dice_loss(mask_t, o_t)
-        g_loss = l_m_l1 + l_dice
-        # g_loss, loss_dict = g_loss_func(o_t, mask_t)
+        # l_m_l1 = torch.mean(torch.abs(mask_t - o_t))
+        l_gan = torch.mean((1. - o_pred )**2)
+        # l_dice = build_dice_loss(mask_t, o_t)
+        # g_loss = l_m_l1 + l_dice
+        loss1, loss_dict = g_loss_func(o_t, mask_t, mask_s)
+        g_loss = loss1 + l_gan
         g_loss.backward()
         G_solver.step()
 
+
+        # Discriminator
+        # requires_grad(G, False)
+        # requires_grad(D, True)
+        # D.freeze_bn()
+        D_solver.zero_grad()
+        o_t = o_t.detach()
+        o_pred = D(o_t)
+        o_true = D(mask_t)
+
+        d_real_loss = torch.mean((1. - o_true)**2)
+        d_real_loss.backward()
+
+        d_fake_loss = torch.mean(o_pred**2)
+        d_fake_loss.backward()
+        d_loss = d_real_loss + d_fake_loss
+        # d_loss.backward()
+        D_solver.step()
+        # clip_grad(D)
+
         if ((step+1) % cfg.write_log_interval == 0):
-            # print('Iter: {}/{} | L: {:.4f} | Dice: {:.4f} | Per: {:.4f} | Style: {:.4f}'.format(
-            print('Iter: {}/{} | L: {:.4f} | Dice: {:.4f}'.format(
+            print('Iter: {}/{} | L: {:.4f} | Per: {:.4f} | Style: {:.4f} | G: {:.4f} | R: {:.4f} | F: {:.4f}'.format(
+            # print('Iter: {}/{} | L: {:.4f} | G: {:.4f} | D: {:.4f}'.format(
                 step+1,
                 cfg.max_iter,
-                l_m_l1.item(),
-                l_dice.item()))
-                # loss_dict["l1"].item(),
+                # l_m_l1.item(),
+                # l_gan.item(),
+                # d_loss.item()))
+                loss_dict["l1"].item(),
                 # loss_dict["dice"].item(),
-                # loss_dict["perc"].item(),
-                # loss_dict["style"].item()))
+                loss_dict["perc"].item(),
+                loss_dict["style"].item(),
+                l_gan.item(),
+                d_real_loss.item(),
+                d_fake_loss.item()))
 
         if ((step+1) % cfg.gen_example_interval == 0) or step == 0:
             savedir = os.path.join(cfg.example_result_dir, train_name, 'iter-' + str(step+1).zfill(len(str(cfg.max_iter))))

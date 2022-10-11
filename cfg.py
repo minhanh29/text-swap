@@ -20,12 +20,15 @@ show_loss_interval = 10
 write_log_interval = 1
 save_ckpt_interval = 500
 gen_example_interval = 500
-checkpoint_savedir = '/vtca/checkpoints/vits/swap_l1/'
-bg_checkpoint_savedir = '/vtca/checkpoints/vits/bg/'
-# ckpt_path = './logs/trained_final_5M_.model'
+checkpoint_savedir = '/vtca/checkpoints/vits/swap_style_gan/'
+fuse_checkpoint_savedir = '/vtca/checkpoints/vits/fuse-combine/'
+bg_checkpoint_savedir = '/vtca/checkpoints/vits/bg-dilated/'
 ckpt_path = None
+# ckpt_path = "/vtca/checkpoints/vits/fuse/fuse-train_step-23500.model"
 text_conversion_ckpt_path = None
-bg_ckpt_path = "/vtca/checkpoints/vits/bg/bg-train_step-0001.model"
+# text_conversion_ckpt_path = "/vtca/checkpoints/vits/swap_style/text-train_step-18000.model"
+bg_ckpt_path = None
+# bg_ckpt_path = "/vtca/checkpoints/vits/bg/bg-train_step-0001.model"
 mask_ckpt_path = "/vtca/checkpoints/vits/mask/text-train_step-50000.model"
 
 # data

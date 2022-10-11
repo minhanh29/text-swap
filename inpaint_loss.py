@@ -58,15 +58,51 @@ class TextSwapLoss(nn.Module):
         # default extractor is VGG16
         self.extractor = VGG16FeatureExtractor().cuda()
 
-    def forward(self, o_t, mask_t):
+    def forward(self, o_t, mask_t, mask_s):
         o_t_3 = torch.cat((o_t, o_t, o_t), dim=1)
         mask_t_3 = torch.cat((mask_t, mask_t, mask_t), dim=1)
+        mask_s_3 = torch.cat((mask_s, mask_s, mask_s), dim=1)
 
         l_m_l1 = torch.mean(torch.abs(mask_t - o_t))
-        l_dice = build_dice_loss(mask_t, o_t)
+        # l_dice = build_dice_loss(mask_t, o_t)
 
         feats_out = self.extractor(o_t_3)
         feats_gt = self.extractor(mask_t_3)
+        feats_s = self.extractor(mask_s)
+
+        perc_loss = 0.0
+        style_loss = 0.0
+        # Calculate the L1Loss for each feature map
+        for i in range(3):
+            perc_loss += self.l1(feats_out[i], feats_gt[i])
+            style_loss += self.l1(gram_matrix(feats_out[i]),
+                                  gram_matrix(feats_gt[i]))
+            style_loss += self.l1(gram_matrix(feats_out[i]),
+                                  gram_matrix(feats_s[i]))
+
+        perc_loss *= cfg.perc_coef
+        style_loss *= cfg.style_coef
+        loss = l_m_l1 + perc_loss + style_loss
+        # loss = l_m_l1 + l_dice
+
+        return loss, {'l1': l_m_l1, 'perc': perc_loss, 'style': style_loss}
+        # return loss, {'l1': l_m_l1, 'dice': l_dice}
+
+
+class FusionLoss(nn.Module):
+    def __init__(self):
+        super(FusionLoss, self).__init__()
+        self.l1 = nn.L1Loss()
+        # default extractor is VGG16
+        self.extractor = VGG16FeatureExtractor().cuda()
+
+    def forward(self, t_f, o_f, mask_t):
+
+        l_hole = cfg.hole_coef * self.l1(mask_t * t_f, mask_t * o_f)
+        l_f_l1 = self.l1(t_f, o_f)
+
+        feats_out = self.extractor(o_f)
+        feats_gt = self.extractor(t_f)
 
         perc_loss = 0.0
         style_loss = 0.0
@@ -77,10 +113,11 @@ class TextSwapLoss(nn.Module):
                                   gram_matrix(feats_gt[i]))
 
         perc_loss *= cfg.perc_coef
-        loss = l_m_l1 + l_dice + perc_loss + style_loss
+        style_loss *= cfg.style_coef
+        loss = l_f_l1 + l_hole + perc_loss + style_loss
         # loss = l_m_l1 + l_dice
 
-        return loss, {'l1': l_m_l1, 'dice': l_dice, 'perc': perc_loss, 'style': style_loss}
+        return loss, (l_f_l1, l_hole, perc_loss, style_loss)
         # return loss, {'l1': l_m_l1, 'dice': l_dice}
 
 
