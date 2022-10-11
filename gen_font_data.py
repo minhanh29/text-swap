@@ -37,7 +37,7 @@ class TextDataset(Dataset):
         self.transform = transforms.Compose([
             transforms.PILToTensor(),
             transforms.Grayscale(1),
-            transforms.Resize(size=120, max_size=128)
+            transforms.Resize(size=40, max_size=48)
         ])
 
         self.train = train
