@@ -2,5 +2,7 @@ dataset/
 datasets/
 custom_feed/
 logs
+results/
+weights/
 __pycache__
 __MACOSX
