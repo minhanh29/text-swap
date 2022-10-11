@@ -87,9 +87,9 @@ class TextDataset(Dataset):
                   font=myFont, fill=(255, 255, 255), anchor="mm")
 
         if random.random() < 0.3:
-            img = img.rotate(random.randint(-40, 30), expand=True)
+            img = img.rotate(random.randint(-40, 40), expand=True)
 
-        img.save(os.path.join(OUT_DIR, f"{idx}.png"))
+        # img.save(os.path.join(OUT_DIR, f"{idx}.png"))
 
         return self.transform(img)
 

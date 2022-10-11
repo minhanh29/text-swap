@@ -1,5 +1,6 @@
 import os
 import math
+from scipy import stats
 import cv2
 import argparse
 import cfg
@@ -60,17 +61,19 @@ def crop_char(mask, bboxes):
         p_b = CHAR_SIZE - mh - p_t
         p_l = (CHAR_SIZE - mw)//2
         p_r = CHAR_SIZE - mw - p_l
-        crop_img = torch.nn.functional.pad(crop_img, (p_l, p_r, p_t, p_b)).float() / 255.
-        pil_img = F.to_pil_image(crop_img)
+        crop_img1 = torch.nn.functional.pad(crop_img, (p_l, p_r, p_t, p_b)).float() / 255.
+        # crop_img2 = torch.nn.functional.pad(crop_img, (p_l, p_r, CHAR_SIZE - mh, 0)).float() / 255.
+        pil_img = F.to_pil_image(crop_img1)
         pil_img.save(f"./custom_feed/result/test{cnt}.png")
         cnt += 1
-        batch.append(crop_img)
+        batch.append(crop_img1)
     return torch.unsqueeze(torch.stack(batch, dim=0), dim=1)
 
 
 def segment_mask(mask, idx):
     mask = np.squeeze(mask) * 255
     mask = mask.astype("uint8")
+    # adapt_thresh = cv2.adaptiveThreshold(mask, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 7, -2)
     kernel = np.ones((3, 3), np.uint8)
     # mask = cv2.dilate(mask, kernel, iterations=1)
     # mask = cv2.erode(mask, kernel, iterations=1)
@@ -96,10 +99,10 @@ def segment_mask(mask, idx):
         mx2 = max(mx2, x2)
         my2 = max(my2, y2)
 
-    mean_area = np.mean(areas) * 1.5
+    mean_area = np.median(areas)
     clean_bboxes = []
     for bbox, area in zip(bboxes, areas):
-        if area > mean_area:
+        if area > mean_area * 1.7 or area < mean_area * 0.5:
             continue
         clean_bboxes.append(bbox)
         x1, y1, x2, y2 = bbox
@@ -111,11 +114,12 @@ def segment_mask(mask, idx):
     return crop_char(mask, clean_bboxes), (mx1, my1, mx2, my2)
 
 
-def gen_data_sample(text, font_path, canvas_width, canvas_height):
+def gen_data_sample(text, font_path, canvas_width, canvas_height, target_w, target_h):
     shape = (canvas_width, canvas_height)
     padding = 0.1
     border = int(min(shape) * padding)
-    target_shape = tuple(np.array(shape) - 2 * border)
+    # target_shape = tuple(np.array(shape) - 2 * border)
+    target_shape = (target_w, target_h)
 
     fontsize = 12
     pre_remain = None
@@ -187,7 +191,7 @@ def main():
     mask_net.load_state_dict(checkpoint['model'])
 
     font_clf = FontClassifier(in_channels=1, num_classes=206).to(device)
-    checkpoint = torch.load("./weights/font_classifier.pth", map_location=torch.device('cpu'))
+    checkpoint = torch.load("./weights/font_classifier_mac.pth", map_location=torch.device('cpu'))
     font_clf.load_state_dict(checkpoint['model'])
 
     trfms = To_tensor()
@@ -218,6 +222,7 @@ def main():
         i_s = inp[1].to(device)
         name = str(inp[2][0])
 
+        print(name)
         o_m, mask_feat = mask_net(i_s)
         o_m = K(o_m)
         o_m_t = o_m
@@ -227,13 +232,24 @@ def main():
         o_b = K(o_b)
 
         batch_char, bbox = segment_mask(o_m_t.numpy()[0], step)
-        print(torch.min(batch_char))
-        font_pred = font_clf(batch_char)
-        font_pred = font_pred.numpy()
-        font_pred = np.squeeze(font_pred)
-        print(np.argmax(font_pred, axis=-1))
+        chosen = 0
+        if len(batch_char) > 0:
+            print(torch.min(batch_char))
+            font_pred = font_clf(batch_char)
+            font_pred = font_pred.numpy()
+            font_pred = np.squeeze(font_pred)
+            indices = np.argmax(font_pred, axis=-1)
+            print(np.max(font_pred, axis=-1))
+            print(indices)
+            chosen = stats.mode(indices).mode[0]
+            # chosen = indices[np.argmax(np.max(font_pred, axis=-1))]
+            print(chosen, font_list[chosen])
 
-        mask_t = gen_data_sample("xin chào", "./fonts/UTM Zirkon.ttf", o_b.shape[3], o_b.shape[2])
+        font_path = os.path.join(FONT_DIR, font_list[chosen])
+
+        target_w = bbox[2] - bbox[0]
+        target_h = bbox[3] - bbox[1]
+        mask_t = gen_data_sample("nguyễn", font_path, o_b.shape[3], o_b.shape[2], target_w, target_h)
         mask_t = torch.unsqueeze(mask_t, dim=0)
 
         o_f = fusion_net(torch.cat((o_b, i_s, o_m_t, mask_t), dim=1))
