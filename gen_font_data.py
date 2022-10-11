@@ -62,7 +62,7 @@ class TextDataset(Dataset):
         p_b = 48 - img.shape[1] - p_t
         p_l = (48 - img.shape[2])//2
         p_r = 48 - img.shape[2] - p_l
-        img = torch.nn.functional.pad(img, (p_l, p_r, p_t, p_b))
+        img = torch.nn.functional.pad(img, (p_l, p_r, p_t, p_b)).float() / 255.
         return img, int(label)
 
     def gen_data_sample(self, text, font_path, idx):

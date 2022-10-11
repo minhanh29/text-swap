@@ -1,4 +1,5 @@
 import torch
+import os
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from gen_font_data import TextDataset
@@ -24,7 +25,7 @@ for p in model.parameters():
 optimizer = optim.Adam(model.parameters(), lr=0.01)
 
 train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=False)
-test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False)
+test_dataloader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 loss_func = torch.nn.CrossEntropyLoss()
 
@@ -40,6 +41,8 @@ for epoch in range(epochs):
     for img, target in pbar:
         global_step += 1
         optimizer.zero_grad()
+        print(torch.max(img))
+        print(torch.min(img))
         img = img.float().to(device)
         target = target.to(device)
         pred = model(img)
@@ -80,4 +83,4 @@ for epoch in range(epochs):
         "model": model.state_dict(),
         "optim": optimizer.state_dict(),
         "global_step": global_step,
-    })
+    }, os.path.join("/content/drive/MyDrive/Text-Replacement/checkpoints", f"{global_step}.pth"))

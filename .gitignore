@@ -4,5 +4,6 @@ custom_feed/
 logs
 results/
 weights/
+light_weights/
 __pycache__
 __MACOSX
