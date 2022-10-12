@@ -73,52 +73,70 @@ def crop_char(mask, bboxes):
 def segment_mask(mask, idx):
     mask = np.squeeze(mask) * 255
     mask = mask.astype("uint8")
+    coords = np.column_stack(np.where(mask > 10))
+    center, (width, height), angle = cv2.minAreaRect(coords)
+    box = cv2.boxPoints(cv2.minAreaRect(coords))
+    box = np.int32(box)
+    box = np.flip(box, 1)
+    image_copy = np.stack([mask, mask, mask], axis=-1)
+    cv2.line(image_copy, box[0], box[1], (0, 255, 255), 1)
+    cv2.line(image_copy, box[1], box[2], (0, 255, 255), 1)
+    cv2.line(image_copy, box[2], box[3], (0, 255, 255), 1)
+    cv2.line(image_copy, box[3], box[0], (0, 255, 255), 1)
+    cv2.imwrite(f"./custom_feed/result/contours{idx}.png", image_copy)
+    print(angle)
+    if angle > 45:
+        angle = -(90 - angle)
+    # otherwise, just take the inverse of the angle to make
+    # it positive
+    # else:
+    #     angle = angle
+    # width = np.linalg.norm(box[2] - box[1])
+    # height = np.linalg.norm(box[1] - box[0])
+    return max(width, height), min(width, height), angle
     # adapt_thresh = cv2.adaptiveThreshold(mask, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 7, -2)
-    kernel = np.ones((3, 3), np.uint8)
+    # kernel = np.ones((3, 3), np.uint8)
     # mask = cv2.dilate(mask, kernel, iterations=1)
     # mask = cv2.erode(mask, kernel, iterations=1)
 
-    contours, hierarchy = cv2.findContours(image=mask, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE)
-    image_copy = np.stack([mask, mask, mask], axis=-1)
-    areas = []
-    bboxes = []
-    mx1, my1, mx2, my2 = mask.shape[1], mask.shape[0], 0, 0
-    for cnt in contours:
-        cnt = np.squeeze(cnt, axis=1)
-        x1 = np.min(cnt[:, 0])
-        x2 = np.max(cnt[:, 0])
-        y1 = np.min(cnt[:, 1])
-        y2 = np.max(cnt[:, 1])
-        cv2.rectangle(image_copy, (x1, y1), (x2, y2), (0, 255, 255), 1)
-        areas.append(abs(y2-y1)*(x2-x1))
-        bboxes.append([x1, y1, x2, y2])
+    # contours, hierarchy = cv2.findContours(image=mask, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE)
+    # image_copy = np.stack([mask, mask, mask], axis=-1)
+    # areas = []
+    # bboxes = []
+    # mx1, my1, mx2, my2 = mask.shape[1], mask.shape[0], 0, 0
+    # for cnt in contours:
+    #     cnt = np.squeeze(cnt, axis=1)
+    #     x1 = np.min(cnt[:, 0])
+    #     x2 = np.max(cnt[:, 0])
+    #     y1 = np.min(cnt[:, 1])
+    #     y2 = np.max(cnt[:, 1])
+    #     cv2.rectangle(image_copy, (x1, y1), (x2, y2), (0, 255, 255), 1)
+    #     areas.append(abs(y2-y1)*(x2-x1))
+    #     bboxes.append([x1, y1, x2, y2])
 
-        # overall bbox
-        mx1 = min(mx1, x1)
-        my1 = min(my1, y1)
-        mx2 = max(mx2, x2)
-        my2 = max(my2, y2)
+    #     # overall bbox
+    #     mx1 = min(mx1, x1)
+    #     my1 = min(my1, y1)
+    #     mx2 = max(mx2, x2)
+    #     my2 = max(my2, y2)
 
-    mean_area = np.median(areas)
-    clean_bboxes = []
-    for bbox, area in zip(bboxes, areas):
-        if area > mean_area * 1.7 or area < mean_area * 0.5:
-            continue
-        clean_bboxes.append(bbox)
-        x1, y1, x2, y2 = bbox
-        cv2.rectangle(image_copy, (x1, y1), (x2, y2), (0, 0, 255), 1)
+    # mean_area = np.median(areas)
+    # clean_bboxes = []
+    # for bbox, area in zip(bboxes, areas):
+    #     if area < mean_area * 0.5:
+    #         continue
+    #     clean_bboxes.append(bbox)
+    #     x1, y1, x2, y2 = bbox
+    #     cv2.rectangle(image_copy, (x1, y1), (x2, y2), (0, 0, 255), 1)
 
-    cv2.rectangle(image_copy, (mx1, my1), (mx2, my2), (0, 255, 0), 1)
-    cv2.imwrite(f"./custom_feed/result/contours{idx}.png", image_copy)
+    # cv2.rectangle(image_copy, (mx1, my1), (mx2, my2), (0, 255, 0), 1)
+    # cv2.imwrite(f"./custom_feed/result/contours{idx}.png", image_copy)
 
-    return crop_char(mask, clean_bboxes), (mx1, my1, mx2, my2)
+    # return crop_char(mask, clean_bboxes), (mx1, my1, mx2, my2)
 
 
-def gen_data_sample(text, font_path, canvas_width, canvas_height, target_w, target_h):
+def gen_data_sample(text, font_path, canvas_width, canvas_height, target_w, target_h, angle=0):
     shape = (canvas_width, canvas_height)
-    padding = 0.1
-    border = int(min(shape) * padding)
-    # target_shape = tuple(np.array(shape) - 2 * border)
     target_shape = (target_w, target_h)
 
     fontsize = 12
@@ -160,6 +178,7 @@ def gen_data_sample(text, font_path, canvas_width, canvas_height, target_w, targ
     # Custom font style and font size
     myFont = ImageFont.truetype(font_path, fontsize)
     draw.text(img_center, text, font=myFont, fill=(255, 255, 255), anchor="mm")
+    img = img.rotate(angle, expand=False)
     return pil_to_tensor(img).float() / 255.
 
 
@@ -190,8 +209,8 @@ def main():
     checkpoint = torch.load("./weights/mask_net.pth", map_location=torch.device('cpu'))
     mask_net.load_state_dict(checkpoint['model'])
 
-    font_clf = FontClassifier(in_channels=1, num_classes=206).to(device)
-    checkpoint = torch.load("./weights/font_clf.pth", map_location=torch.device('cpu'))
+    font_clf = FontClassifier(in_channels=1, num_classes=len(font_list)).to(device)
+    checkpoint = torch.load("./weights/font_classifier_2.pth", map_location=torch.device('cpu'))
     font_clf.load_state_dict(checkpoint['model'])
 
     trfms = To_tensor()
@@ -210,6 +229,7 @@ def main():
     font_clf.eval()
 
     torch_blur = transforms.GaussianBlur((3, 3))
+    torch_resize = transforms.Resize(size=64)
     with torch.no_grad():
       for step in tqdm(range(len(example_data))):
         try:
@@ -232,13 +252,15 @@ def main():
         o_b, _ = inpaint_net(i_s, o_m, mask_feat)
         o_b = K(o_b)
 
-        font_pred = font_clf(torch_blur(o_m_t))
+        font_pred = font_clf(o_m_t)
         font_pred = font_pred.detach().numpy()
         chosen = np.argmax(font_pred, axis=-1)[0]
         print(chosen, np.max(font_pred))
         print(font_list[chosen])
 
-        batch_char, bbox = segment_mask(o_m_t.numpy()[0], step)
+        # batch_char, bbox = segment_mask(o_m_t.numpy()[0], step)
+        target_w, target_h, angle = segment_mask(o_m_t.numpy()[0], step)
+        print(target_w, target_h)
         # chosen = 0
         # if len(batch_char) > 0:
         #     print(torch.min(batch_char))
@@ -252,12 +274,12 @@ def main():
         #     # chosen = indices[np.argmax(np.max(font_pred, axis=-1))]
         #     print(chosen, font_list[chosen])
 
-        # font_path = os.path.join(FONT_DIR, font_list[chosen])
-        font_path = "./fonts/UTM Omni.ttf"
+        font_path = os.path.join(FONT_DIR, font_list[chosen])
+        # font_path = "./fonts/UTM Omni.ttf"
 
-        target_w = bbox[2] - bbox[0]
-        target_h = bbox[3] - bbox[1]
-        mask_t = gen_data_sample("nguyễn", font_path, o_b.shape[3], o_b.shape[2], target_w, target_h)
+        # target_w = bbox[2] - bbox[0]
+        # target_h = bbox[3] - bbox[1]
+        mask_t = gen_data_sample("nguyễn", font_path, o_b.shape[3], o_b.shape[2], target_w, target_h, angle)
         mask_t = torch.unsqueeze(mask_t, dim=0)
 
         o_f = fusion_net(torch.cat((o_b, i_s, o_m_t, mask_t), dim=1))

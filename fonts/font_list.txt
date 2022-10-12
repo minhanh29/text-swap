@@ -1,206 +1,197 @@
-0|arial.ttf
-1|Calibri Bold Italic.ttf
-2|Calibri Italic.ttf
-3|Calibri Light Italic.ttf
-4|Calibri Light.ttf
-5|Calibri Regular.ttf
-6|OpenSans-Regular.ttf
-7|times new roman bold italic.ttf
-8|times new roman bold.ttf
-9|times new roman italic.ttf
-10|times new roman.ttf
-11|UTM A&S Graceland.ttf
-12|UTM A&S Heartbeat.ttf
-13|UTM A&S Signwriter.ttf
-14|UTM Agin.ttf
-15|UTM Aircona.ttf
-16|UTM Akashi.ttf
-17|UTM Alba Matter.ttf
-18|UTM Alberta Heavy.ttf
-19|UTM Alexander.ttf
-20|UTM Alpine KT.ttf
-21|UTM Alter Gothic.ttf
-22|UTM Ambrose.ttf
-23|UTM Ambrosia.ttf
-24|UTM American Sans.ttf
-25|UTM Americana.ttf
-26|UTM AmericanaB.ttf
-27|UTM AmericanaBEx.ttf
-28|UTM AmericanaItalic.ttf
-29|UTM Amerika Sans.ttf
-30|UTM Amherst.ttf
-31|UTM Androgyne.ttf
-32|UTM Aptima.ttf
-33|UTM AptimaBold.ttf
-34|UTM AptimaBoldItalic.ttf
-35|UTM AptimaItalic.ttf
-36|UTM Aquarelle.ttf
-37|UTM Aristote.ttf
-38|UTM Arruba.ttf
-39|UTM Atlas.ttf
-40|UTM Atlas_Solid.ttf
-41|UTM Aurora.ttf
-42|UTM Avenida.ttf
-43|UTM Avo.ttf
-44|UTM AvoBold.ttf
-45|UTM AvoBold_Italic.ttf
-46|UTM AvoItalic.ttf
-47|UTM Azuki.ttf
-48|UTM BanqueB.ttf
-49|UTM BanqueR.ttf
-50|UTM Beautiful Caps.ttf
-51|UTM Bebas.ttf
-52|UTM Bell.ttf
-53|UTM Bienvenue.ttf
-54|UTM Billhead 1910.ttf
-55|UTM Bitsumishi Pro.ttf
-56|UTM Brewers KT.ttf
-57|UTM Brushtip-C.ttf
-58|UTM BryantLG.ttf
-59|UTM BryantLG_B.ttf
-60|UTM Bustamalaka.ttf
-61|UTM Cabaret.ttf
-62|UTM Cafeta.ttf
-63|UTM Camellia F.ttf
-64|UTM Camellia.ttf
-65|UTM Candombe.ttf
-66|UTM Caviar.ttf
-67|UTM Centur.ttf
-68|UTM CenturBold.ttf
-69|UTM CenturBoldItalic.ttf
-70|UTM CenturItalic.ttf
-71|UTM Charlemagne.ttf
-72|UTM Charlotte.ttf
-73|UTM Chickenhawk.ttf
-74|UTM ClassizismAntiqua.ttf
-75|UTM Colossalis.ttf
-76|UTM Conestoga.ttf
-77|UTM Cookies.ttf
-78|UTM Cool Blue.ttf
-79|UTM Cooper Black.ttf
-80|UTM Cooper BlackItalic.ttf
-81|UTM Copperplate.ttf
-82|UTM CopperplateB.ttf
-83|UTM Dai Co Viet.ttf
-84|UTM Davida.ttf
-85|UTM Dax.ttf
-86|UTM DaxBold.ttf
-87|UTM DaxMedium.ttf
-88|UTM Demian KT.ttf
-89|UTM Deutsch Gothic.ttf
-90|UTM Diana.ttf
-91|UTM Dinh Tran.ttf
-92|UTM Duepuntozero.ttf
-93|UTM DuepuntozeroBold.ttf
-94|UTM EdwardianB.ttf
-95|UTM EdwardianKT.ttf
-96|UTM Eremitage.ttf
-97|UTM Ericsson Capital.ttf
-98|UTM Erie Black.ttf
-99|UTM Essendine Caps.ttf
-100|UTM Essendine CapsBold.ttf
-101|UTM Facebook.ttf
-102|UTM FacebookB K&T.ttf
-103|UTM FacebookK&TBoldItalic.ttf
-104|UTM FacebookR K&T.ttf
-105|UTM Faltura.ttf
-106|UTM Fancy Full.ttf
-107|UTM Fire House.ttf
-108|UTM Flamenco.ttf
-109|UTM Flavour.ttf
-110|UTM Fleur.ttf
-111|UTM French Vanilla.ttf
-112|UTM Futura Extra.ttf
-113|UTM Gill Sans_Con.ttf
-114|UTM Gille Classic.ttf
-115|UTM Gloria.ttf
-116|UTM God's WordBold.ttf
-117|UTM God's WordBoldItalic.ttf
-118|UTM God's WordR.ttf
-119|UTM God's WordRItalic.ttf
-120|UTM Gradoo.ttf
-121|UTM Guanine.ttf
-122|UTM Habano.ttf
-123|UTM Hanzel.ttf
-124|UTM Helve.ttf
-125|UTM HelveBold.ttf
-126|UTM HelveBold_Italic.ttf
-127|UTM HelvetIns.ttf
-128|UTM Helve_Italic.ttf
-129|UTM Impact.ttf
-130|UTM Iron Gothic.ttf
-131|UTM IsadoraBold.ttf
-132|UTM IsadoraR.ttf
-133|UTM Kabel KT.ttf
-134|UTM Karate.ttf
-135|UTM Khuccamta.ttf
-136|UTM Kona KT.ttf
-137|UTM Libel KT.ttf
-138|UTM LinotypeZapfino KT.ttf
-139|UTM Loko.ttf
-140|UTM Mabella.ttf
-141|UTM Magnesium.ttf
-142|UTM Marlboro.ttf
-143|UTM Micra.ttf
-144|UTM Mobifone KT.ttf
-145|UTM Mother.ttf
-146|UTM Neo Sans Intel.ttf
-147|UTM Neo Sans IntelBold.ttf
-148|UTM Neo Sans IntelBold_Italic.ttf
-149|UTM Neo Sans Intel_Italic.ttf
-150|UTM Netmuc KT.ttf
-151|UTM Neutra.ttf
-152|UTM NGHA 01.ttf
-153|UTM NguyenHa 02.ttf
-154|UTM Niagara.ttf
-155|UTM Nokia Standard.ttf
-156|UTM Nokia StandardB.ttf
-157|UTM Nokia.ttf
-158|UTM Novido.ttf
-159|UTM Nyala.ttf
-160|UTM Omni.ttf
-161|UTM Ong Do Gia.ttf
-162|UTM Ong Do Tre.ttf
-163|UTM Pacific Standard.ttf
-164|UTM Penumbra.ttf
-165|UTM PenumbraBold.ttf
-166|UTM Pierre.ttf
-167|UTM Raven.ttf
-168|UTM Rockwell.ttf
-169|UTM Roman Classic.ttf
-170|UTM Sarah.ttf
-171|UTM Scriptina KT.ttf
-172|UTM SeagullBold.ttf
-173|UTM SeagullBoldItalic.ttf
-174|UTM Sharnay.ttf
-175|UTM Showcard.ttf
-176|UTM Silk Script.ttf
-177|UTM Sloop 1.ttf
-178|UTM Soraya.ttf
-179|UTM Spring.ttf
-180|UTM Staccato.ttf
-181|UTM Swashes.ttf
-182|UTM Swiss 721 Black Condensed.ttf
-183|UTM Swiss Condensed.ttf
-184|UTM Swiss CondensedBold.ttf
-185|UTM Talling.ttf
-186|UTM TallingBold.ttf
-187|UTM Tam Le.ttf
-188|UTM ThanChienTranh.ttf
-189|UTM Thanh Nhac TL.ttf
-190|UTM ThuPhap Thien An.ttf
-191|UTM Times.ttf
-192|UTM TimesItalic.ttf
-193|UTM Trajan Pro Bold.ttf
-194|UTM ViceroyJF.ttf
-195|UTM Wedding K&T.ttf
-196|UTM Windsor BT.ttf
-197|UTM Yen Tu.ttf
-198|UTM Yves KT.ttf
-199|UTM Yves KT_Bold.ttf
-200|UTM Yves KT_Bold_Italic.ttf
-201|UTM Zebrawood.ttf
-202|UTM Zirkon.ttf
-203|UTMFacebookK&TItalic.ttf
-204|UTMTimesBold Italic.ttf
-205|UTMTimesBold.ttf
+0|OpenSans-Regular.ttf
+1|UTM A&S Graceland.ttf
+2|UTM A&S Heartbeat.ttf
+3|UTM A&S Signwriter.ttf
+4|UTM Agin.ttf
+5|UTM Aircona.ttf
+6|UTM Akashi.ttf
+7|UTM Alba Matter.ttf
+8|UTM Alberta Heavy.ttf
+9|UTM Alexander.ttf
+10|UTM Alpine KT.ttf
+11|UTM Alter Gothic.ttf
+12|UTM Ambrose.ttf
+13|UTM Ambrosia.ttf
+14|UTM American Sans.ttf
+15|UTM Americana.ttf
+16|UTM AmericanaB.ttf
+17|UTM AmericanaBEx.ttf
+18|UTM AmericanaItalic.ttf
+19|UTM Amerika Sans.ttf
+20|UTM Amherst.ttf
+21|UTM Androgyne.ttf
+22|UTM Aptima.ttf
+23|UTM AptimaBold.ttf
+24|UTM AptimaBoldItalic.ttf
+25|UTM AptimaItalic.ttf
+26|UTM Aquarelle.ttf
+27|UTM Aristote.ttf
+28|UTM Arruba.ttf
+29|UTM Atlas.ttf
+30|UTM Atlas_Solid.ttf
+31|UTM Aurora.ttf
+32|UTM Avenida.ttf
+33|UTM Avo.ttf
+34|UTM AvoBold.ttf
+35|UTM AvoBold_Italic.ttf
+36|UTM AvoItalic.ttf
+37|UTM Azuki.ttf
+38|UTM BanqueB.ttf
+39|UTM BanqueR.ttf
+40|UTM Beautiful Caps.ttf
+41|UTM Bebas.ttf
+42|UTM Bell.ttf
+43|UTM Bienvenue.ttf
+44|UTM Billhead 1910.ttf
+45|UTM Bitsumishi Pro.ttf
+46|UTM Brewers KT.ttf
+47|UTM Brushtip-C.ttf
+48|UTM BryantLG.ttf
+49|UTM BryantLG_B.ttf
+50|UTM Bustamalaka.ttf
+51|UTM Cabaret.ttf
+52|UTM Cafeta.ttf
+53|UTM Camellia F.ttf
+54|UTM Camellia.ttf
+55|UTM Candombe.ttf
+56|UTM Caviar.ttf
+57|UTM Centur.ttf
+58|UTM CenturBold.ttf
+59|UTM CenturBoldItalic.ttf
+60|UTM CenturItalic.ttf
+61|UTM Charlemagne.ttf
+62|UTM Charlotte.ttf
+63|UTM Chickenhawk.ttf
+64|UTM ClassizismAntiqua.ttf
+65|UTM Colossalis.ttf
+66|UTM Conestoga.ttf
+67|UTM Cookies.ttf
+68|UTM Cool Blue.ttf
+69|UTM Cooper Black.ttf
+70|UTM Cooper BlackItalic.ttf
+71|UTM Copperplate.ttf
+72|UTM CopperplateB.ttf
+73|UTM Dai Co Viet.ttf
+74|UTM Davida.ttf
+75|UTM Dax.ttf
+76|UTM DaxBold.ttf
+77|UTM DaxMedium.ttf
+78|UTM Demian KT.ttf
+79|UTM Deutsch Gothic.ttf
+80|UTM Diana.ttf
+81|UTM Dinh Tran.ttf
+82|UTM Duepuntozero.ttf
+83|UTM DuepuntozeroBold.ttf
+84|UTM EdwardianB.ttf
+85|UTM EdwardianKT.ttf
+86|UTM Eremitage.ttf
+87|UTM Ericsson Capital.ttf
+88|UTM Erie Black.ttf
+89|UTM Essendine Caps.ttf
+90|UTM Essendine CapsBold.ttf
+91|UTM Facebook.ttf
+92|UTM FacebookB K&T.ttf
+93|UTM FacebookK&TBoldItalic.ttf
+94|UTM FacebookR K&T.ttf
+95|UTM Faltura.ttf
+96|UTM Fancy Full.ttf
+97|UTM Fire House.ttf
+98|UTM Flamenco.ttf
+99|UTM Flavour.ttf
+100|UTM Fleur.ttf
+101|UTM French Vanilla.ttf
+102|UTM Futura Extra.ttf
+103|UTM Gill Sans_Con.ttf
+104|UTM Gille Classic.ttf
+105|UTM Gloria.ttf
+106|UTM God's WordBold.ttf
+107|UTM God's WordBoldItalic.ttf
+108|UTM God's WordR.ttf
+109|UTM God's WordRItalic.ttf
+110|UTM Gradoo.ttf
+111|UTM Guanine.ttf
+112|UTM Habano.ttf
+113|UTM Hanzel.ttf
+114|UTM Helve.ttf
+115|UTM HelveBold.ttf
+116|UTM HelveBold_Italic.ttf
+117|UTM Helve_Italic.ttf
+118|UTM HelvetIns.ttf
+119|UTM Impact.ttf
+120|UTM Iron Gothic.ttf
+121|UTM IsadoraBold.ttf
+122|UTM IsadoraR.ttf
+123|UTM Kabel KT.ttf
+124|UTM Karate.ttf
+125|UTM Khuccamta.ttf
+126|UTM Kona KT.ttf
+127|UTM Libel KT.ttf
+128|UTM LinotypeZapfino KT.ttf
+129|UTM Loko.ttf
+130|UTM Mabella.ttf
+131|UTM Magnesium.ttf
+132|UTM Marlboro.ttf
+133|UTM Micra.ttf
+134|UTM Mobifone KT.ttf
+135|UTM Mother.ttf
+136|UTM NGHA 01.ttf
+137|UTM Neo Sans Intel.ttf
+138|UTM Neo Sans IntelBold.ttf
+139|UTM Neo Sans IntelBold_Italic.ttf
+140|UTM Neo Sans Intel_Italic.ttf
+141|UTM Netmuc KT.ttf
+142|UTM Neutra.ttf
+143|UTM NguyenHa 02.ttf
+144|UTM Niagara.ttf
+145|UTM Nokia Standard.ttf
+146|UTM Nokia StandardB.ttf
+147|UTM Nokia.ttf
+148|UTM Novido.ttf
+149|UTM Nyala.ttf
+150|UTM Omni.ttf
+151|UTM Ong Do Gia.ttf
+152|UTM Ong Do Tre.ttf
+153|UTM Pacific Standard.ttf
+154|UTM Penumbra.ttf
+155|UTM PenumbraBold.ttf
+156|UTM Pierre.ttf
+157|UTM Raven.ttf
+158|UTM Rockwell.ttf
+159|UTM Roman Classic.ttf
+160|UTM Sarah.ttf
+161|UTM Scriptina KT.ttf
+162|UTM SeagullBold.ttf
+163|UTM SeagullBoldItalic.ttf
+164|UTM Sharnay.ttf
+165|UTM Showcard.ttf
+166|UTM Silk Script.ttf
+167|UTM Sloop 1.ttf
+168|UTM Soraya.ttf
+169|UTM Spring.ttf
+170|UTM Staccato.ttf
+171|UTM Swashes.ttf
+172|UTM Swiss 721 Black Condensed.ttf
+173|UTM Swiss Condensed.ttf
+174|UTM Swiss CondensedBold.ttf
+175|UTM Talling.ttf
+176|UTM TallingBold.ttf
+177|UTM Tam Le.ttf
+178|UTM ThanChienTranh.ttf
+179|UTM Thanh Nhac TL.ttf
+180|UTM ThuPhap Thien An.ttf
+181|UTM Times.ttf
+182|UTM TimesItalic.ttf
+183|UTM Trajan Pro Bold.ttf
+184|UTM ViceroyJF.ttf
+185|UTM Wedding K&T.ttf
+186|UTM Windsor BT.ttf
+187|UTM Yen Tu.ttf
+188|UTM Yves KT.ttf
+189|UTM Yves KT_Bold.ttf
+190|UTM Yves KT_Bold_Italic.ttf
+191|UTM Zebrawood.ttf
+192|UTM Zirkon.ttf
+193|UTMFacebookK&TItalic.ttf
+194|UTMTimesBold Italic.ttf
+195|UTMTimesBold.ttf
+196|arial.ttf

@@ -6,6 +6,7 @@ OUT_PATH = "./fonts/font_list.txt"
 
 font_list = os.listdir(FONT_DIR)
 font_list = [f for f in font_list if ".ttf" in f]
+font_list.sort()
 print("Got", len(font_list), "fonts")
 
 with open(OUT_PATH, "w") as f:
