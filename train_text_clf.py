@@ -26,7 +26,9 @@ def custom_collate(batch):
     to_h = cfg.data_shape[0]
     to_w = w_sum // cfg.batch_size
     to_w = int(round(to_w / 8)) * 8
+    to_w = max(to_h, to_w)
     to_scale = (to_h, to_w)
+    print(to_scale)
     torch_resize = transforms.Resize(to_scale)
     torch_blur = transforms.GaussianBlur((5, 5))
 
@@ -75,7 +77,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 # checkpoint = torch.load("./weights/18850.pth", map_location="cpu")
 # model.load_state_dict(checkpoint['model'])
 
-train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=False, collate_fn=custom_collate)
+train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=False, collate_fn=custom_collate)
 test_dataloader = DataLoader(test_dataset, batch_size=64, shuffle=False, collate_fn=custom_collate)
 
 loss_func = torch.nn.CrossEntropyLoss()

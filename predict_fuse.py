@@ -239,12 +239,11 @@ def main():
             font_pred = font_pred.numpy()
             font_pred = np.squeeze(font_pred)
             indices = np.argmax(font_pred, axis=-1)
-            sum_arr = np.sum(font_pred, axis=0)
-            print(sum)
+            # sum_arr = np.sum(font_pred, axis=0)
             print(np.max(font_pred, axis=-1))
             print(indices)
-            # chosen = stats.mode(indices).mode[0]
-            chosen = np.argmax(sum_arr)
+            chosen = stats.mode(indices).mode[0]
+            # chosen = np.argmax(sum_arr)
             print(chosen, font_list[chosen])
 
         font_path = os.path.join(FONT_DIR, font_list[chosen])
@@ -256,6 +255,7 @@ def main():
 
         o_f = fusion_net(torch.cat((o_b, i_s, o_m_t, mask_t), dim=1))
 
+        i_s = i_s.squeeze(0).detach().to('cpu')
         o_m = o_m_t.squeeze(0).detach().to('cpu')
         o_b = o_b.squeeze(0).detach().to('cpu')
         o_f = o_f.squeeze(0).detach().to('cpu')
@@ -266,10 +266,12 @@ def main():
         o_m = F.to_pil_image(o_m)
         o_b = F.to_pil_image((o_b + 1)/2)
         o_f = F.to_pil_image((o_f + 1)/2)
+        i_s = F.to_pil_image((i_s + 1)/2)
 
         o_m.save(os.path.join(args.save_dir, name + 'o_m.png'))
         o_b.save(os.path.join(args.save_dir, name + 'o_b.png'))
         o_f.save(os.path.join(args.save_dir, name + 'o_f.png'))
+        i_s.save(os.path.join(args.save_dir, name + 'i_s.png'))
 
 
 if __name__ == '__main__':
