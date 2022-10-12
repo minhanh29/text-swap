@@ -6,5 +6,6 @@ results/
 weights/
 light_weights/
 weights_mac/
+raw_weights/
 __pycache__
 __MACOSX

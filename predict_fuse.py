@@ -191,7 +191,7 @@ def main():
     mask_net.load_state_dict(checkpoint['model'])
 
     font_clf = FontClassifier(in_channels=1, num_classes=206).to(device)
-    checkpoint = torch.load("./weights/font_classifier_mac.pth", map_location=torch.device('cpu'))
+    checkpoint = torch.load("./weights/font_clf.pth", map_location=torch.device('cpu'))
     font_clf.load_state_dict(checkpoint['model'])
 
     trfms = To_tensor()
@@ -209,6 +209,7 @@ def main():
     fusion_net.eval()
     font_clf.eval()
 
+    torch_blur = transforms.GaussianBlur((3, 3))
     with torch.no_grad():
       for step in tqdm(range(len(example_data))):
         try:
@@ -231,21 +232,28 @@ def main():
         o_b, _ = inpaint_net(i_s, o_m, mask_feat)
         o_b = K(o_b)
 
-        batch_char, bbox = segment_mask(o_m_t.numpy()[0], step)
-        chosen = 0
-        if len(batch_char) > 0:
-            print(torch.min(batch_char))
-            font_pred = font_clf(batch_char)
-            font_pred = font_pred.numpy()
-            font_pred = np.squeeze(font_pred)
-            indices = np.argmax(font_pred, axis=-1)
-            print(np.max(font_pred, axis=-1))
-            print(indices)
-            chosen = stats.mode(indices).mode[0]
-            # chosen = indices[np.argmax(np.max(font_pred, axis=-1))]
-            print(chosen, font_list[chosen])
+        font_pred = font_clf(torch_blur(o_m_t))
+        font_pred = font_pred.detach().numpy()
+        chosen = np.argmax(font_pred, axis=-1)[0]
+        print(chosen, np.max(font_pred))
+        print(font_list[chosen])
 
-        font_path = os.path.join(FONT_DIR, font_list[chosen])
+        batch_char, bbox = segment_mask(o_m_t.numpy()[0], step)
+        # chosen = 0
+        # if len(batch_char) > 0:
+        #     print(torch.min(batch_char))
+        #     font_pred = font_clf(batch_char)
+        #     font_pred = font_pred.numpy()
+        #     font_pred = np.squeeze(font_pred)
+        #     indices = np.argmax(font_pred, axis=-1)
+        #     print(np.max(font_pred, axis=-1))
+        #     print(indices)
+        #     chosen = stats.mode(indices).mode[0]
+        #     # chosen = indices[np.argmax(np.max(font_pred, axis=-1))]
+        #     print(chosen, font_list[chosen])
+
+        # font_path = os.path.join(FONT_DIR, font_list[chosen])
+        font_path = "./fonts/UTM Omni.ttf"
 
         target_w = bbox[2] - bbox[0]
         target_h = bbox[3] - bbox[1]
@@ -254,6 +262,7 @@ def main():
 
         o_f = fusion_net(torch.cat((o_b, i_s, o_m_t, mask_t), dim=1))
 
+        i_s = i_s.squeeze(0).detach().to('cpu')
         o_m = o_m_t.squeeze(0).detach().to('cpu')
         o_b = o_b.squeeze(0).detach().to('cpu')
         o_f = o_f.squeeze(0).detach().to('cpu')
@@ -264,10 +273,12 @@ def main():
         o_m = F.to_pil_image(o_m)
         o_b = F.to_pil_image((o_b + 1)/2)
         o_f = F.to_pil_image((o_f + 1)/2)
+        i_s = F.to_pil_image((i_s + 1)/2)
 
         o_m.save(os.path.join(args.save_dir, name + 'o_m.png'))
         o_b.save(os.path.join(args.save_dir, name + 'o_b.png'))
         o_f.save(os.path.join(args.save_dir, name + 'o_f.png'))
+        i_s.save(os.path.join(args.save_dir, name + 'i_s.png'))
 
 
 if __name__ == '__main__':
