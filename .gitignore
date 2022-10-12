@@ -5,5 +5,6 @@ logs
 results/
 weights/
 light_weights/
+raw_weights/
 __pycache__
 __MACOSX

@@ -27,8 +27,8 @@ class TextDataset(Dataset):
         self.font_list = [f.strip().split("|") for f in font_list]
         print("Got", len(self.font_list), "fonts")
 
-        self.org_canvas_width = 150
-        self.org_canvas_height = 150
+        self.org_canvas_width = 350
+        self.org_canvas_height = 350
         self.shape = (self.org_canvas_width, self.org_canvas_height)
         self.padding = 20
 
@@ -37,7 +37,7 @@ class TextDataset(Dataset):
         self.transform = transforms.Compose([
             transforms.PILToTensor(),
             transforms.Grayscale(1),
-            transforms.Resize(size=40, max_size=48)
+            # transforms.Resize(size=64)
         ])
 
         self.train = train
@@ -53,16 +53,18 @@ class TextDataset(Dataset):
             return 640
 
     def __getitem__(self, idx):
-        text = random.choice(self.char_list)
+        # text = random.choice(self.char_list)
+        text = random.choice(self.text_list)
         label, font_path = random.choice(self.font_list)
         font_path = os.path.join(self.font_dir, font_path)
         img = self.gen_data_sample(text, font_path, idx)
+        img = img.float()/255.
 
-        p_t = (48 - img.shape[1])//2
-        p_b = 48 - img.shape[1] - p_t
-        p_l = (48 - img.shape[2])//2
-        p_r = 48 - img.shape[2] - p_l
-        img = torch.nn.functional.pad(img, (p_l, p_r, p_t, p_b)).float() / 255.
+        # p_t = (48 - img.shape[1])//2
+        # p_b = 48 - img.shape[1] - p_t
+        # p_l = (48 - img.shape[2])//2
+        # p_r = 48 - img.shape[2] - p_l
+        # img = torch.nn.functional.pad(img, (p_l, p_r, p_t, p_b)).float() / 255.
         return img, int(label)
 
     def gen_data_sample(self, text, font_path, idx):
@@ -87,9 +89,9 @@ class TextDataset(Dataset):
                   font=myFont, fill=(255, 255, 255), anchor="mm")
 
         if random.random() < 0.3:
-            img = img.rotate(random.randint(-40, 40), expand=True)
+            img = img.rotate(random.randint(-30, 30), expand=True)
 
-        img.save(os.path.join(OUT_DIR, f"{idx}.png"))
+        # img.save(os.path.join(OUT_DIR, f"{idx}.png"))
 
         return self.transform(img)
 
