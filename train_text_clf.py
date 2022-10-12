@@ -10,6 +10,10 @@ from model import FontClassifier
 from tqdm import tqdm
 import cfg
 
+torch_blur = transforms.GaussianBlur((5, 5))
+torch_v_flip = transforms.RandomVerticalFlip(0.2)
+torch_h_flip = transforms.RandomHorizontalFlip(0.2)
+
 
 def custom_collate(batch):
 
@@ -28,25 +32,31 @@ def custom_collate(batch):
     to_w = int(round(to_w / 8)) * 8
     to_w = max(to_h, to_w)
     to_scale = (to_h, to_w)
-    print(to_scale)
     torch_resize = transforms.Resize(to_scale)
-    torch_blur = transforms.GaussianBlur((5, 5))
-
     cnt = 0
     for item in batch:
         img, label = item
 
+        if random.uniform(0., 1.) < 0.8:
+            p_t = random.randint(0, 70)
+            p_b = random.randint(0, 70)
+            p_l = random.randint(0, 70)
+            p_r = random.randint(0, 70)
+            img = torch.nn.functional.pad(img, (p_l, p_r, p_t, p_b))
         img = torch_resize(img)
 
-        if random.random() < 0.15:
+        if random.uniform(0., 1.) < 0.15:
             img = torch_blur(img)
 
-        if random.random() < 0.15:
+        if random.uniform(0., 1.) < 0.15:
             img = img + (0.02**0.5)*torch.randn(1, to_h, to_w)
             img = torch.clamp(img, 0., 1.)
 
-        # img_to_save = F.to_pil_image(img)
-        # img_to_save.save(f"./results/text_classification_data/{cnt}.png")
+        img = torch_h_flip(img)
+        img = torch_v_flip(img)
+
+        img_to_save = F.to_pil_image(img)
+        img_to_save.save(f"./results/text_classification_data/{cnt}.png")
         cnt += 1
         img_batch.append(img)
         label_batch.append(label)
