@@ -49,10 +49,9 @@ In order to predict, you will need to provide a pair of inputs (The source *i_s*
     $ python3 predict.py --input_dir *data_dir* --save_dir *destination_dir* --checkpoint *path_to_ckpt*
     ```
 
-### Pre-trained weights
+### Results
 
-I finetuned the model using Google Colab Free and the original pretrained model (you can get the original weights on Niwhskal's repository) or download my pre-trained weights [here](https://drive.google.com/file/d/1FMyabJ5ivT3HVUfUeozqOpMqlU68V65K/view?usp=sharing)
-My training result
+My training result  
 
 ![](media/result1.png)  
 
