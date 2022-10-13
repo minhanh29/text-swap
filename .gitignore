@@ -3,7 +3,6 @@ datasets/
 custom_feed/
 logs
 results/
-weights/
 light_weights/
 weights_mac/
 raw_weights/

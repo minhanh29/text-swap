@@ -130,7 +130,7 @@ class example_dataset(Dataset):
 
         i_t = io.imread(os.path.join(cfg.example_data_dir, img_name + 'i_t.png'))
         i_s = io.imread(os.path.join(cfg.example_data_dir, img_name + 'i_s.png'))
-        # i_s = cv2.copyMakeBorder(i_s, 7, 7, 7, 7, cv2.BORDER_CONSTANT, None, (0, 0, 0))
+        i_s = cv2.copyMakeBorder(i_s, 3, 3, 3, 3, cv2.BORDER_CONSTANT, None, (0, 0, 0))
         h, w = i_t.shape[:2]
         scale_ratio = cfg.data_shape[0] / h
         to_h = cfg.data_shape[0]

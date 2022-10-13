@@ -210,7 +210,7 @@ def main():
     mask_net.load_state_dict(checkpoint['model'])
 
     font_clf = FontClassifier(in_channels=1, num_classes=len(font_list)).to(device)
-    checkpoint = torch.load("./weights/font_classifier_2.pth", map_location=torch.device('cpu'))
+    checkpoint = torch.load("./weights/font_classifier_win2.pth", map_location=torch.device('cpu'))
     font_clf.load_state_dict(checkpoint['model'])
 
     trfms = To_tensor()
@@ -228,7 +228,7 @@ def main():
     fusion_net.eval()
     font_clf.eval()
 
-    torch_blur = transforms.GaussianBlur((3, 3))
+    torch_blur = transforms.GaussianBlur((5, 5))
     torch_resize = transforms.Resize(size=64)
     with torch.no_grad():
       for step in tqdm(range(len(example_data))):
@@ -252,7 +252,8 @@ def main():
         o_b, _ = inpaint_net(i_s, o_m, mask_feat)
         o_b = K(o_b)
 
-        font_pred = font_clf(o_m_t)
+        font_pred = font_clf(torch_blur(o_m_t))
+        # font_pred = font_clf(o_m_t)
         font_pred = font_pred.detach().numpy()
         chosen = np.argmax(font_pred, axis=-1)[0]
         print(chosen, np.max(font_pred))
@@ -279,7 +280,7 @@ def main():
 
         # target_w = bbox[2] - bbox[0]
         # target_h = bbox[3] - bbox[1]
-        mask_t = gen_data_sample("nguyễn", font_path, o_b.shape[3], o_b.shape[2], target_w, target_h, angle)
+        mask_t = gen_data_sample("Mình Tôi", font_path, o_b.shape[3], o_b.shape[2], target_w, target_h, angle)
         mask_t = torch.unsqueeze(mask_t, dim=0)
 
         o_f = fusion_net(torch.cat((o_b, i_s, o_m_t, mask_t), dim=1))

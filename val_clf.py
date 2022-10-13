@@ -55,8 +55,8 @@ def custom_collate(batch):
         img = torch_h_flip(img)
         img = torch_v_flip(img)
 
-        img_to_save = F.to_pil_image(img)
-        img_to_save.save(f"./results/text_classification_data/{cnt}.png")
+        # img_to_save = F.to_pil_image(img)
+        # img_to_save.save(f"./results/text_classification_data/{cnt}.png")
         cnt += 1
         img_batch.append(img)
         label_batch.append(label)
@@ -79,12 +79,12 @@ test_dataset = TextDataset(FILE_TEXT, FONT_DIR, FONT_FILE, train=False)
 
 num_classes = len(test_dataset.font_list)
 model = FontClassifier(1, num_classes).to(device)
-checkpoint = torch.load("./weights/59000.pth", map_location="cpu")
+checkpoint = torch.load("./raw_weights/font-218800.pth", map_location="cpu")
 model.load_state_dict(checkpoint['model'])
 
-# torch.save({
-#     "model": model.state_dict(),
-# }, "./weights/font_classifier_2.pth")
+torch.save({
+    "model": model.state_dict(),
+}, "./weights/font_classifier_win2.pth")
 
 test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False, collate_fn=custom_collate)
 
