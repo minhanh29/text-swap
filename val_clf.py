@@ -79,12 +79,12 @@ test_dataset = TextDataset(FILE_TEXT, FONT_DIR, FONT_FILE, train=False)
 
 num_classes = len(test_dataset.font_list)
 model = FontClassifier(1, num_classes).to(device)
-checkpoint = torch.load("./raw_weights/font-218800.pth", map_location="cpu")
+checkpoint = torch.load("./weights/font_classifier.pth", map_location="cpu")
 model.load_state_dict(checkpoint['model'])
 
-torch.save({
-    "model": model.state_dict(),
-}, "./weights/font_classifier_win2.pth")
+# torch.save({
+#     "model": model.state_dict(),
+# }, "./weights/font_classifier_win2.pth")
 
 test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False, collate_fn=custom_collate)
 

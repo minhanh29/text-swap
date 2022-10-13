@@ -54,7 +54,9 @@ In order to predict, you will need to provide a pair of inputs (The source *i_s*
 I finetuned the model using Google Colab Free and the original pretrained model (you can get the original weights on Niwhskal's repository) or download my pre-trained weights [here](https://drive.google.com/file/d/1FMyabJ5ivT3HVUfUeozqOpMqlU68V65K/view?usp=sharing)
 My training result
 
-![](media/pre-trained_result.png)
+![](media/result1.png)  
+
+![](media/result2.png)
 
 
 
@@ -66,4 +68,3 @@ My training result
 
 * [SynthText project](https://github.com/ankush-me/SynthText): This work provides the background dataset that is instrumental for data synthesis.
 
-* [Streamlit docs](https://www.streamlit.io/): One of the best libraries to build and publish apps. Severely underrated.
