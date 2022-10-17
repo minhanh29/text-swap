@@ -26,7 +26,7 @@ def main():
     img = load_image(img_path, mode="RGB")
     mask = load_image(mask_path, mode="L")
 
-    res_img = inpainter.predict([img], [mask])
+    res_img = inpainter.predict([img], [mask])[0]
     res_img = Image.fromarray(res_img)
     res_img.save("./custom_feed/out.png")
 

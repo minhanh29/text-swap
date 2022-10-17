@@ -278,4 +278,43 @@ class fusion_net(torch.nn.Module):
 
         return x
 
+class FontClassifier(torch.nn.Module):
 
+    def __init__(self, in_channels, num_classes):
+        super().__init__()
+        self.refine = torch.nn.Conv2d(in_channels, 32, kernel_size = 3, stride = 1, padding = 1)
+        self._conv1 = torch.nn.Conv2d(32, 64, kernel_size = 3, stride = 2, padding = 1)
+        self._conv1_bn = torch.nn.BatchNorm2d(64)
+
+        self._conv2 = torch.nn.Conv2d(64, 64, kernel_size = 3, stride = 2, padding = 1)
+        self._conv2_bn = torch.nn.BatchNorm2d(64)
+
+        self._conv3 = torch.nn.Conv2d(64, 128, kernel_size = 3, stride = 2, padding = 1)
+        self._conv3_bn = torch.nn.BatchNorm2d(128)
+
+        self._conv4 = torch.nn.Conv2d(128, 256, kernel_size = 3, stride = 2, padding = 1)
+        self._conv4_bn = torch.nn.BatchNorm2d(256)
+
+        self.pool = torch.nn.AdaptiveAvgPool2d((1, 1))
+        self.flatten = torch.nn.Flatten()
+        self.fc = torch.nn.Linear(256, 512)
+        self.classifier = torch.nn.Linear(512, num_classes)
+
+
+    def forward(self, x):
+        x = torch.nn.functional.leaky_relu(self.refine(x))
+        x = self._conv1(x)
+        x = torch.nn.functional.leaky_relu(self._conv1_bn(x))
+        x = self._conv2(x)
+        x = torch.nn.functional.leaky_relu(self._conv2_bn(x))
+        x = self._conv3(x)
+        x = torch.nn.functional.leaky_relu(self._conv3_bn(x))
+        x = self._conv4(x)
+        x = torch.nn.functional.leaky_relu(self._conv4_bn(x))
+        x = self.pool(x)
+        x = self.flatten(x)
+        x = torch.nn.functional.leaky_relu(self.fc(x))
+        x = self.classifier(x)
+        # x = torch.nn.functional.softmax(x, dim=-1)
+
+        return x

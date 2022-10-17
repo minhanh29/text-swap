@@ -37,6 +37,7 @@ class Inpainter:
 
     def predict(self, img_list, mask_list):
         dataset = MyDataset(img_list, mask_list, pad_out_to_modulo=8)
+        result = []
         with torch.no_grad():
             for img_i in range(len(dataset)):
                 batch = move_to_device(default_collate([dataset[img_i]]), self.device)
@@ -51,5 +52,5 @@ class Inpainter:
 
                 # RGB image
                 cur_res = np.clip(cur_res * 255, 0, 255).astype('uint8')
-                return cur_res
-        return None
+                result.append(cur_res)
+        return result

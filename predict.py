@@ -7,7 +7,7 @@ import cfg
 import torch
 from tqdm import tqdm
 import numpy as np
-from model import Generator, Discriminator, Vgg19, mask_extraction_net, inpainting_net_mask, fusion_net, FontClassifier
+from model import mask_extraction_net, inpainting_net_mask, fusion_net, FontClassifier
 from utils import *
 from datagen import datagen_srnet, example_dataset, To_tensor
 from torch.utils.data import Dataset, DataLoader
@@ -113,12 +113,7 @@ def main():
     parser.add_argument('--input_dir', help = 'Directory containing xxx_i_s and xxx_i_t with same prefix',
                         default = cfg.example_data_dir)
     parser.add_argument('--save_dir', help = 'Directory to save result', default ="./custom_feed/result")
-    parser.add_argument('--checkpoint', help = 'ckpt', default = "./weights/mask-train_step-50000.model")
     args = parser.parse_args()
-
-    assert args.input_dir is not None
-    assert args.save_dir is not None
-    assert args.checkpoint is not None
 
     print_log('model compiling start.', content_color = PrintColor['yellow'])
 
