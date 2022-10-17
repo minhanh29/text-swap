@@ -147,6 +147,34 @@ class example_dataset(Dataset):
 
         return sample
 
+class manual_dataset(Dataset):
+
+    def __init__(self, data_list, transform = None):
+
+        self.data_list = data_list
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, idx):
+
+        i_s = self.data_list[idx]
+
+        # i_s = cv2.copyMakeBorder(i_s, 3, 3, 3, 3, cv2.BORDER_CONSTANT, None, (0, 0, 0))
+        h, w = i_s.shape[:2]
+        scale_ratio = cfg.data_shape[0] / h
+        to_h = cfg.data_shape[0]
+        to_w = int(round(int(w * scale_ratio) / 8)) * 8
+        to_scale = (to_h, to_w)
+
+        i_s = resize(i_s, to_scale, preserve_range=True)
+
+        i_s = i_s.transpose((2, 0, 1)) /127.5 -1
+
+        i_s = torch.from_numpy(i_s)
+
+        return i_s.float()
 
 class To_tensor(object):
     def __call__(self, sample):

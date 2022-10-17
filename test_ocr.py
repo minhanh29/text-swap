@@ -1,7 +1,4 @@
 from paddleocr import PaddleOCR,draw_ocr
-# Paddleocr supports Chinese, English, French, German, Korean and Japanese.
-# You can set the parameter `lang` as `ch`, `en`, `fr`, `german`, `korean`, `japan`
-# to switch the language model in order.
 ocr = PaddleOCR(use_angle_cls=True, lang='en',
                 det_model_dir="../paddle-ocr/en_PP-OCRv3_det_infer",
                 rec_model_dir="../paddle-ocr/en_PP-OCRv3_rec_infer",

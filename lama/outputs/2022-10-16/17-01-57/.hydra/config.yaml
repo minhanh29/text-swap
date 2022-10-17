@@ -1,0 +1,11 @@
+indir: /Volumes/Data/AI/Text_Replacement/LaMa/my_images
+outdir: /Volumes/Data/AI/Text_Replacement/LaMa/output
+model:
+  path: /Volumes/Data/AI/Text_Replacement/LaMa/lama-fourier
+  checkpoint: best.ckpt
+dataset:
+  kind: default
+  img_suffix: .png
+  pad_out_to_modulo: 8
+device: cpu
+out_key: inpainted
