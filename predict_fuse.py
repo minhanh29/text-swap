@@ -183,10 +183,7 @@ def main():
         w = img_blur.shape[1]
         bw = int(w*0.15)
         bh = int(h*0.15)
-        print(bw, bh)
-        print(img_blur.shape)
         img_blur = cv2.copyMakeBorder(img_blur, bh, bh, bw, bw, cv2.BORDER_CONSTANT, None, (0, 0, 0))
-        print(img_blur.shape)
         img_blur = cv2.resize(img_blur, (w, h))
 
         o_m_blur = torch.tensor(np.expand_dims(img_blur, axis=-1))
@@ -207,7 +204,7 @@ def main():
         o_f = K(o_f)
 
         i_s = i_s.squeeze(0).detach().to('cpu')
-        o_m = o_m_blur.squeeze(0).detach().to('cpu')
+        o_m = o_m_t.squeeze(0).detach().to('cpu')
         o_b = o_b.squeeze(0).detach().to('cpu')
         o_f = o_f.squeeze(0).detach().to('cpu')
 
@@ -224,7 +221,13 @@ def main():
         o_f = remove_pad(o_f)
         i_s = remove_pad(i_s)
 
-        o_m.save(os.path.join(args.save_dir, name + 'o_m.png'))
+        o_m = np.array(o_m)
+        _, o_m = cv2.threshold(o_m, 127,255,cv2.THRESH_BINARY)
+        kernel = np.ones((3, 3), np.uint8)
+        print(o_m.shape)
+        o_m = cv2.dilate(o_m, kernel, iterations=2)
+        cv2.imwrite(os.path.join(args.save_dir, name + 'o_m.png'), o_m)
+        # o_m.save(os.path.join(args.save_dir, name + 'o_m.png'))
         o_b.save(os.path.join(args.save_dir, name + 'o_b.png'))
         o_f.save(os.path.join(args.save_dir, name + 'o_f.png'))
         i_s.save(os.path.join(args.save_dir, name + 'i_s.png'))
