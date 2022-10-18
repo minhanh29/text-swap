@@ -20,6 +20,34 @@ from lama import Inpainter
 
 
 height = 64
+PADDING = 3
+
+pil_to_tensor = transforms.Compose([
+    transforms.PILToTensor(),
+    transforms.Grayscale(1)
+])
+
+
+def make_mask(mask_margin, width, height):
+    mask_margin = 5
+    mask = np.zeros((height, width))
+    top_mask = np.linspace(1, 0, mask_margin)
+    top_mask = np.repeat(np.expand_dims(top_mask, axis=-1), width, axis=-1)
+    bottom_mask = np.linspace(0, 1, mask_margin)
+    bottom_mask = np.repeat(np.expand_dims(bottom_mask, axis=-1), width, axis=-1)
+    left_mask = np.linspace(1, 0, mask_margin)
+    left_mask = np.repeat(np.expand_dims(left_mask, axis=0), height, axis=0)
+    right_mask = np.linspace(0, 1, mask_margin)
+    right_mask = np.repeat(np.expand_dims(right_mask, axis=0), height, axis=0)
+
+    mask[:mask_margin, :] = top_mask
+    mask[-mask_margin:, :] = bottom_mask
+    mask[:, :mask_margin] = np.maximum(mask[:, :mask_margin], left_mask)
+    mask[:, -mask_margin:] = np.maximum(mask[:, -mask_margin:], right_mask)
+    mask = np.expand_dims(mask, axis=-1)
+    mask = np.repeat(mask, 3, axis=-1)
+
+    return mask
 
 
 def preprocess(batch):
@@ -40,7 +68,6 @@ def preprocess(batch):
     cnt = 0
     for img in batch:
         img = torch_resize(img)
-        img = torch.clamp(img, 0., 1.)
         img_batch.append(img)
         cnt += 1
 
@@ -79,7 +106,9 @@ class ModelFactory:
 
         self.device = torch.device("cpu")
         self.ocr = PaddleOCR(use_angle_cls=True, lang='en',
-                             det_model_dir=os.path.join(model_dir, "en_PP-OCRv3_det_infer"),
+                             # det_model_dir=os.path.join(model_dir, "en_PP-OCRv3_det_infer"),
+                             # rec_model_dir=os.path.join(model_dir, "en_PP-OCRv3_rec_infer"),
+                             det_model_dir=os.path.join(model_dir, "ch_ppocr_server_v2.0_det_infer"),
                              rec_model_dir=os.path.join(model_dir, "en_PP-OCRv3_rec_infer"),
                              cls_model_dir=os.path.join(model_dir, "ch_ppocr_mobile_v2.0_cls_infer"))
 
@@ -96,7 +125,7 @@ class ModelFactory:
         self.inpainter = Inpainter(os.path.join(model_dir, "lama-fourier"))
 
         self.font_clf = FontClassifier(in_channels=1, num_classes=len(self.font_list)).to(self.device)
-        checkpoint = torch.load(os.path.join(model_dir, "790450.pth"), map_location=self.device)
+        checkpoint = torch.load(os.path.join(model_dir, "font_classifier.pth"), map_location=self.device)
         self.font_clf.load_state_dict(checkpoint['model'])
         torch.save({
             "model": self.font_clf.state_dict()
@@ -104,6 +133,7 @@ class ModelFactory:
         self.font_clf.eval()
 
         self.K = torch.nn.ZeroPad2d((0, 1, 1, 0))
+        self.my_pad = torch.nn.ZeroPad2d((3, 3, 3, 3))
 
     def detect_text(self, img):
         '''
@@ -125,12 +155,13 @@ class ModelFactory:
         return self.inpainter.predict(new_img_list, new_mask_list)
 
     def extract_mask(self, img):
+        img = img/127.5 - 1
         img = preprocess(img)
         mask_s = self.mask_net(img)
         mask_s = self.K(mask_s)
         return mask_s.detach()
 
-    def classify_font(self, img):
+    def detect_font(self, img):
         pred = self.font_clf(img)
         pred = pred.detach().numpy()
         chosen = np.argmax(pred, axis=-1)
@@ -144,6 +175,15 @@ class ModelFactory:
                  source_img,
                  original_text_mask,
                  target_text_mask):
+
+        background_img = background_img.float() / 127.5 - 1
+        source_img = source_img.float() / 127.5 - 1
+
+        background_img = preprocess(background_img)
+        source_img = preprocess(source_img)
+        original_text_mask = preprocess(original_text_mask)
+        target_text_mask = preprocess(target_text_mask)
+
         img = self.fusion_net(torch.cat((background_img,
                                          source_img,
                                          original_text_mask,
@@ -171,23 +211,49 @@ class BBox:
     def __repr__(self):
         return self.__str__()
 
+
 class Roi:
     def __init__(self, id, sub_img, bbox, text, angle, model_factory):
         self.id = id
+
+        self.padding = 3
+        sub_img[:self.padding] = 0
+        sub_img[-self.padding:] = 0
+        sub_img[:, :self.padding] = 0
+        sub_img[:, -self.padding:] = 0
+
         self.img = sub_img
+        torch_img = torch.as_tensor(self.img)
+        torch_img = torch.permute(torch_img, (2, 0, 1))
+        self.torch_img = torch_img.float()
+
         self.bbox = BBox(*bbox)
         self.text = text
         self.angle = angle
         self.model_factory = model_factory
+
+        self.bg_torch_img = sub_img
+
         self.extract_mask()
         self.find_bounding_rect()
+        self.detect_font()
+        self.create_target_text("Mình")
+
+    def update_bg(self, new_full_img):
+        x1, y1, x2, y2 = self.bbox.get()
+        self.bg_img = new_full_img[y1:y2, x1:x2].copy()
+        bg_img = new_full_img[y1:y2, x1:x2].copy()
+        bg_img[:self.padding] = 0
+        bg_img[-self.padding:] = 0
+        bg_img[:, :self.padding] = 0
+        bg_img[:, -self.padding:] = 0
+        bg_torch_img = torch.as_tensor(bg_img)
+        bg_torch_img = torch.permute(bg_torch_img, (2, 0, 1))
+        self.bg_torch_img = bg_torch_img.float()
 
     def extract_mask(self):
-        torch_img = torch.as_tensor(self.img)
-        torch_img = torch.permute(torch_img, (2, 0, 1))
-        torch_img = torch_img.float() / 255.
         with torch.no_grad():
-            torch_mask = self.model_factory.extract_mask([torch_img])[0]
+            torch_mask = self.model_factory.extract_mask(torch.unsqueeze(self.torch_img, dim=0))[0]
         torch_mask = torch_mask.detach()
         mask = torch.permute(torch_mask, (1, 2, 0)).numpy()
         mask = (mask * 255).astype("uint8")
@@ -195,8 +261,6 @@ class Roi:
         kernel = np.ones((5, 5), np.uint8)
         mask = cv2.dilate(mask, kernel, iterations=3)
         mask = cv2.resize(mask, (self.img.shape[1], self.img.shape[0]))
-        area = np.count_nonzero(mask)
-        # print(self.text, area, area/(mask.shape[0] * mask.shape[1]))
 
         self.torch_mask = torch_mask
         self.mask = mask
@@ -213,8 +277,96 @@ class Roi:
 
         return img, self.bbox.abs_inner(self.minBbox)
 
+    def detect_font(self):
+        self.font_path = self.model_factory.detect_font(torch.unsqueeze(self.torch_mask, dim=0))[0]
+        print(self.font_path)
+
+    def create_target_text(self, text, angle=0):
+        canvas_width = self.torch_mask.shape[2]
+        canvas_height = self.torch_mask.shape[1]
+        shape = (canvas_width, canvas_height)
+        target_w = int(canvas_width * 0.9)
+        target_h = int(canvas_height*0.7)
+        target_shape = (target_w, target_h)
+
+        fontsize = 30
+        pre_remain = None
+        text_h = target_h
+        while True:
+            # get text bbox
+            img_center = (canvas_width//2, canvas_height//2)
+            img = Image.new('RGB', (canvas_width, canvas_height), (0, 0, 0))
+            draw = ImageDraw.Draw(img)
+            myFont = ImageFont.truetype(self.font_path, fontsize)
+            draw.text(img_center, text, font=myFont, fill=(255, 255, 255), anchor="mm")
+            rect = img.getbbox()
+
+            res_shape = (int(rect[2] - rect[0]), int(rect[3] - rect[1]))
+            text_h = res_shape[1]
+            remain = np.min(np.array(target_shape) - np.array(res_shape))
+            if pre_remain is not None:
+                m = pre_remain * remain
+                if m <= 0:
+                    if m < 0 and remain < 0:
+                        fontsize -= 1
+                    if m == 0 and remain != 0:
+                        if remain < 0:
+                            fontsize -= 1
+                        elif remain > 0:
+                            fontsize += 1
+                    break
+            if remain < 0:
+                if fontsize == 2:
+                    break
+                fontsize -= 1
+            else:
+                fontsize += 1
+            pre_remain = remain
+
+        img_center = (canvas_width//2, canvas_height//2)
+        img = Image.new('RGB', (canvas_width, canvas_height), (0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # Custom font style and font size
+        myFont = ImageFont.truetype(self.font_path, fontsize)
+        draw.text((canvas_width//2, text_h + (canvas_height-text_h)//2), text, font=myFont, fill=(255, 255, 255), anchor="mb")
+        img.save(f"./custom_feed/{self.text}.png")
+        # img = img.rotate(angle, expand=False)
+        self.target_mask = pil_to_tensor(img).float() / 255.
+
+    def fuse_img(self):
+        fuse_img = self.model_factory.fuse_img(torch.unsqueeze(self.bg_torch_img, dim=0),
+                                               torch.unsqueeze(self.torch_img, dim=0),
+                                               torch.unsqueeze(self.torch_mask, dim=0),
+                                               torch.unsqueeze(self.target_mask, dim=0))
+        fuse_img = fuse_img.squeeze(0).detach().to('cpu')
+        fuse_img = F.to_pil_image((fuse_img + 1)/2)
+        fuse_img = np.array(fuse_img)
+        fuse_img = cv2.resize(fuse_img, (self.bg_img.shape[1], self.bg_img.shape[0]))
+        padding = self.padding
+        fuse_img[:padding] = self.bg_img[:padding]
+        fuse_img[-padding:] = self.bg_img[-padding:]
+        fuse_img[:, :padding] = self.bg_img[:, :padding]
+        fuse_img[:, -padding:] = self.bg_img[:, -padding:]
+
+        padding -= 1
+        mask_width = fuse_img.shape[1] - 2 * padding
+        mask_height = fuse_img.shape[0] - 2 * padding
+        mask = make_mask(4, mask_width, mask_height)
+        fuse_img[padding:-padding, padding:-padding] = self.bg_img[padding:-padding, padding:-padding] * mask + (1-mask) * fuse_img[padding:-padding, padding:-padding]
+
+        self.fuse_img = fuse_img
+        # cv2.imwrite(f"./custom_feed/fuse_{self.text}.png", cv2.cvtColor(fuse_img, cv2.COLOR_RGB2BGR))
+
+        # bg_img = F.to_pil_image((self.bg_torch_img/127.5 - 1 + 1)/2)
+        # bg_img.save(f"./custom_feed/bg_{self.text}.png")
+
+        # img = F.to_pil_image((self.torch_img/127.5 - 1 + 1)/2)
+        # img.save(f"./custom_feed/source_{self.text}.png")
+
     def __str__(self):
         result = f"""
+
         =====================
         Bbox: {self.bbox}
         Min Bbox: {self.minBbox}
@@ -240,7 +392,7 @@ class TextSwapper:
         for i, item in enumerate(result):
             print(item)
             boxes, text, angle = item
-            if text[1] < 0.9:
+            if text[1] < 0.8:
                 continue
             boxes = np.array(boxes)
             x1 = np.min(boxes[:, 0])
@@ -262,25 +414,45 @@ class TextSwapper:
             img, bbox = roi.get_abs_inner_box()
             x1, y1, x2, y2 = bbox.get()
             area = (y2-y1)*(x2-x1)
-            if area/total_area < 0.01:
+            if area/total_area < 0.01 or (y2-y1)/mask.shape[0] < 0.06 or (x2-x1)/mask.shape[1] < 0.05:
+                x1, y1, x2, y2 = roi.bbox.get()
                 mask[y1:y2, x1:x2] = 255
             else:
                 mask[y1:y2, x1:x2] = img
-        cv2.imwrite(f"./custom_feed/mask.png", mask)
+        cv2.imwrite(f"./custom_feed/poster3_mask.png", mask)
         return mask
 
     def extract_background(self):
         mask = self.create_mask()
         res_img = self.model_factory.extract_background([self.img], [mask])
         res_img = res_img[0]
+        self.bg_img = res_img
         res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite("./custom_feed/bg.png", res_img)
+        cv2.imwrite("./custom_feed/poster3_bg.png", res_img)
+
+    def update_bg(self):
+        for roi in self.rois:
+            roi.update_bg(self.bg_img)
+
+    def fuse_img(self):
+        for roi in self.rois:
+            roi.fuse_img()
+
+        result_img = self.bg_img.copy()
+        for roi in self.rois:
+            x1, y1, x2, y2 = roi.bbox.get()
+            result_img[y1:y2, x1:x2] = roi.fuse_img
+        result_img = cv2.cvtColor(result_img, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(f"./custom_feed/poster3_fuse.png", result_img)
+        return result_img
 
 
 if __name__ == "__main__":
     model_factory = ModelFactory("./weights", "./fonts")
-    img = cv2.imread("./custom_feed/ad.png")
+    img = cv2.imread("./custom_feed/poster3.png")
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     text_swapper = TextSwapper(model_factory, img)
     text_swapper.detect_text()
     text_swapper.extract_background()
+    text_swapper.update_bg()
+    text_swapper.fuse_img()
