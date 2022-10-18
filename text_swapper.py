@@ -96,8 +96,11 @@ class ModelFactory:
         self.inpainter = Inpainter(os.path.join(model_dir, "lama-fourier"))
 
         self.font_clf = FontClassifier(in_channels=1, num_classes=len(self.font_list)).to(self.device)
-        checkpoint = torch.load(os.path.join(model_dir, "font_classifier.pth"), map_location=self.device)
+        checkpoint = torch.load(os.path.join(model_dir, "790450.pth"), map_location=self.device)
         self.font_clf.load_state_dict(checkpoint['model'])
+        torch.save({
+            "model": self.font_clf.state_dict()
+        }, "./weights/font_classifier.pth")
         self.font_clf.eval()
 
         self.K = torch.nn.ZeroPad2d((0, 1, 1, 0))
