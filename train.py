@@ -8,7 +8,7 @@ from tqdm import tqdm
 import torchvision.transforms.functional as F
 from skimage.transform import resize
 from skimage import io
-from model import Generator, Discriminator, Vgg19, fusion_net_alone, mask_extraction_net
+from model import Generator, Discriminator, Vgg19, fusion_net, mask_extraction_net
 from torchvision import models, transforms, datasets
 from loss import build_generator_loss, build_discriminator_loss, build_gan_loss, build_vgg_loss, build_l1_loss
 from datagen import datagen_srnet, example_dataset, To_tensor
@@ -114,7 +114,7 @@ def main():
 
     print_log('training start.', content_color = PrintColor['yellow'])
 
-    G = fusion_net_alone(in_channels = 8).cuda()
+    G = fusion_net(in_channels = 8).cuda()
     # D1 = Discriminator(in_channels = 6).cuda()
     g_loss_func = FusionLoss()
 

@@ -1,0 +1,3 @@
+- model.path=./lama-fourier
+- indir=./my_images
+- outdir=./output

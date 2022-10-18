@@ -1,0 +1,3 @@
+- model.path=/Volumes/Data/AI/Image_inpainting/LaMa/biglama/
+- indir=/Volumes/Data/AI/Image_inpainting/LaMa/images/
+- outdir=/Volumes/Data/AI/Image_inpainting/LaMa/output
