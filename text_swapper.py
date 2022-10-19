@@ -1,7 +1,9 @@
 import os
+from textblob import TextBlob
 import math
 from skimage import io
 from scipy import stats
+from scipy.signal import wiener
 import cv2
 import argparse
 import cfg
@@ -17,8 +19,10 @@ from torchvision import transforms
 from PIL import Image, ImageDraw, ImageFont
 from paddleocr import PaddleOCR, draw_ocr
 from lama import Inpainter
+from googletrans import Translator
 
 
+img_name = "poster6"
 height = 64
 PADDING = 3
 
@@ -26,6 +30,12 @@ pil_to_tensor = transforms.Compose([
     transforms.PILToTensor(),
     transforms.Grayscale(1)
 ])
+
+def normalize(v):
+    norm = np.linalg.norm(v)
+    if norm == 0:
+       return v
+    return v / norm
 
 
 def make_mask(mask_margin, width, height):
@@ -96,6 +106,38 @@ def expand_bbox(bbox, img_shape, w_ratio=0.1, h_ratio=0.3):
 
     return x1, y1, x2, y2
 
+
+def expand_bbox_perspec(box, img_shape, w, h, w_ratio=0.1, h_ratio=0.3):
+    padding_w = int(w * w_ratio)
+    padding_h = int(h * h_ratio)
+
+    v10 = normalize(box[0] - box[1])
+    v30 = normalize(box[0] - box[3])
+    v0 = v10 * padding_w + v30 * padding_h
+    p0 = box[0] + v0
+
+    v01 = normalize(box[1] - box[0])
+    v21 = normalize(box[1] - box[2])
+    v1 = v01 * padding_w + v21 * padding_h
+    p1 = box[1] + v1
+
+    v12 = normalize(box[2] - box[1])
+    v32 = normalize(box[2] - box[3])
+    v2 = v12 * padding_h + v32 * padding_w
+    p2 = box[2] + v2
+
+    v23 = normalize(box[3] - box[2])
+    v03 = normalize(box[3] - box[0])
+    v3 = v23 * padding_w + v03 * padding_h
+    p3 = box[3] + v3
+
+    new_box = np.float32([p0, p1, p2, p3])
+    new_box[:, 0] = np.clip(new_box[:, 0], 0, img_shape[1]-1)
+    new_box[:, 1] = np.clip(new_box[:, 1], 0, img_shape[0]-1)
+
+    return new_box
+
+
 class ModelFactory:
     def __init__(self, model_dir="./weights", font_dir="./fonts"):
         self.font_dir = font_dir
@@ -126,12 +168,18 @@ class ModelFactory:
 
         self.font_clf = FontClassifier(in_channels=1, num_classes=len(self.font_list)).to(self.device)
         checkpoint = torch.load(os.path.join(model_dir, "font_classifier.pth"), map_location=self.device)
-        # checkpoint = torch.load(os.path.join(model_dir, "font_classifier_old.pth"), map_location=self.device)
         self.font_clf.load_state_dict(checkpoint['model'])
         self.font_clf.eval()
 
         self.K = torch.nn.ZeroPad2d((0, 1, 1, 0))
         self.my_pad = torch.nn.ZeroPad2d((3, 3, 3, 3))
+
+        self.exclude_list = np.array([147, 38, 39, 14, 15, 127, 128, 129, 91, 223])
+
+        self.translator = Translator()
+
+    def translate(self, text):
+        return self.translator.translate(text, dest="vi").text
 
     def detect_text(self, img):
         '''
@@ -160,8 +208,10 @@ class ModelFactory:
         return mask_s.detach()
 
     def detect_font(self, img):
+        img = preprocess(img)
         pred = self.font_clf(img)
         pred = pred.detach().numpy()
+        pred[:, self.exclude_list] = 0
         chosen = np.argmax(pred, axis=-1)
         font_path = []
         for idx in chosen:
@@ -203,6 +253,12 @@ class BBox:
         x1, y1, x2, y2 = innerBox.get()
         return BBox(self.x1 + x1, self.y1 + y1, self.x1 + x2, self.y1 + y2)
 
+    def width(self):
+        return abs(self.x2 - self.x1)
+
+    def height(self):
+        return abs(self.y2 - self.y1)
+
     def __str__(self):
         return f"({self.x1}, {self.y1}, {self.x2}, {self.y2})"
 
@@ -214,19 +270,14 @@ class Roi:
     def __init__(self, id, sub_img, bbox, text, angle, model_factory):
         self.id = id
 
-        self.padding = 3
-        # sub_img[:self.padding] = 0
-        # sub_img[-self.padding:] = 0
-        # sub_img[:, :self.padding] = 0
-        # sub_img[:, -self.padding:] = 0
-
         self.img = sub_img
         torch_img = torch.as_tensor(self.img)
         torch_img = torch.permute(torch_img, (2, 0, 1))
         self.torch_img = torch_img.float()
 
         self.bbox = BBox(*bbox)
-        self.text = text
+        tb = TextBlob(text.lower())
+        self.text = tb.correct()
         self.angle = angle
         self.model_factory = model_factory
 
@@ -235,16 +286,12 @@ class Roi:
         self.extract_mask()
         self.find_bounding_rect()
         self.detect_font()
-        self.create_target_text("Minh Anh")
+        self.create_target_text(self.model_factory.translate(self.text))
 
     def update_bg(self, new_full_img):
         x1, y1, x2, y2 = self.bbox.get()
         self.bg_img = new_full_img[y1:y2, x1:x2].copy()
         bg_img = new_full_img[y1:y2, x1:x2].copy()
-        # bg_img[:self.padding] = 0
-        # bg_img[-self.padding:] = 0
-        # bg_img[:, :self.padding] = 0
-        # bg_img[:, -self.padding:] = 0
         bg_torch_img = torch.as_tensor(bg_img)
         bg_torch_img = torch.permute(bg_torch_img, (2, 0, 1))
         self.bg_torch_img = bg_torch_img.float()
@@ -255,14 +302,14 @@ class Roi:
         torch_mask = torch_mask.detach()
         mask = torch.permute(torch_mask, (1, 2, 0)).numpy()
         mask = (mask * 255).astype("uint8")
-        cv2.imwrite(f"./custom_feed/{self.text.split('/')[0]}.png", mask)
+        _, torch_mask = cv2.threshold(mask, 120, 255, cv2.THRESH_TOZERO)
+        torch_mask = torch_mask.astype("float32")/255.
+        torch_mask = torch.from_numpy(np.expand_dims(torch_mask, axis=-1))
+        self.torch_mask = torch.permute(torch_mask, (2, 0, 1))
         mask[mask > 120] = 255
         kernel = np.ones((5, 5), np.uint8)
         mask = cv2.dilate(mask, kernel, iterations=3)
         mask = cv2.resize(mask, (self.img.shape[1], self.img.shape[0]))
-
-        torch_blur = transforms.GaussianBlur((3, 3))
-        self.torch_mask = torch_blur(torch_mask)
         self.mask = mask
 
     def find_bounding_rect(self):
@@ -282,14 +329,15 @@ class Roi:
         print(self.font_path)
 
     def create_target_text(self, text, angle=0):
-        # canvas_width = self.torch_mask.shape[2]
-        # canvas_height = self.torch_mask.shape[1]
         canvas_width = self.img.shape[1]
         canvas_height = self.img.shape[0]
         shape = (canvas_width, canvas_height)
         target_w = int(canvas_width * 0.9)
-        target_h = int(canvas_height*0.7)
+        target_h = int(canvas_height * 0.7)
+        target_w = min(self.minBbox.width(), target_w)
+        target_h = min(self.minBbox.height(), target_h)
         target_shape = (target_w, target_h)
+        print("Target", target_shape, shape)
 
         fontsize = 30
         pre_remain = None
@@ -332,11 +380,10 @@ class Roi:
         # Custom font style and font size
         myFont = ImageFont.truetype(self.font_path, fontsize)
         draw.text((canvas_width//2, text_h + (canvas_height-text_h)//2), text, font=myFont, fill=(255, 255, 255), anchor="mb")
-        # img.save(f"./custom_feed/{self.text}.png")
-        # img = img.rotate(angle, expand=False)
-        self.target_mask_np = np.array(img)
-        res_mask = img.resize((self.torch_mask.shape[2], self.torch_mask.shape[1]))
-        self.target_mask = pil_to_tensor(res_mask).float() / 255.
+        self.target_mask_np = np.array(img).astype("float32")/255.
+        res_img = img.resize((self.torch_mask.shape[2], self.torch_mask.shape[1]))
+        res_img.save(f"custom_feed/{self.text.split('/')[0]}.png")
+        self.target_mask = pil_to_tensor(res_img).float() / 255.
 
     def fuse_img(self):
         fuse_img = self.model_factory.fuse_img(torch.unsqueeze(self.bg_torch_img, dim=0),
@@ -347,9 +394,7 @@ class Roi:
         fuse_img = F.to_pil_image((fuse_img + 1)/2)
         fuse_img = np.array(fuse_img)
         fuse_img = cv2.resize(fuse_img, (self.bg_img.shape[1], self.bg_img.shape[0]))
-
-        target_mask_np = self.target_mask_np.astype("float32")/255.
-        fuse_img = fuse_img * target_mask_np + (1 - target_mask_np) * self.bg_img
+        # fuse_img = fuse_img * self.target_mask_np + (1 - self.target_mask_np) * self.bg_img
         self.fuse_img = fuse_img
 
     def __str__(self):
@@ -357,7 +402,6 @@ class Roi:
 
         =====================
         Bbox: {self.bbox}
-        Min Bbox: {self.minBbox}
         Text: {self.text}
         Angle: {self.angle}
         """
@@ -377,37 +421,69 @@ class TextSwapper:
 
     def detect_text(self):
         result = self.model_factory.detect_text(self.img)
+        temp = self.img.copy()
         for i, item in enumerate(result):
             print(item)
             boxes, text, angle = item
-            if text[1] < 0.8:
+            if text[1] < 0.7:
                 continue
-            boxes = np.array(boxes)
+            boxes = np.float32(boxes)
             x1 = np.min(boxes[:, 0])
             x2 = np.max(boxes[:, 0])
             y1 = np.min(boxes[:, 1])
             y2 = np.max(boxes[:, 1])
 
-            x1, y1, x2, y2 = expand_bbox([x1, y1, x2, y2], self.img.shape)
+            b = boxes.astype("int32")
+
+            w1 = np.linalg.norm(b[0] - b[1])
+            w2 = np.linalg.norm(b[1] - b[2])
+            w3 = np.linalg.norm(b[2] - b[3])
+            w4 = np.linalg.norm(b[3] - b[0])
+
+            w = max(w1, w3)
+            h = max(w2, w4)
+
+            boxes = expand_bbox_perspec(boxes, self.img.shape, w, h, 0.3 * h / w, 0.3)
+            b = boxes.astype("int32")
+
+            temp = cv2.line(temp, b[0], b[1], (0, 0, 255), 2)
+            temp = cv2.line(temp, b[1], b[2], (0, 0, 255), 2)
+            temp = cv2.line(temp, b[2], b[3], (0, 0, 255), 2)
+            temp = cv2.line(temp, b[3], b[0], (0, 0, 255), 2)
+
+            w1 = np.linalg.norm(b[0] - b[1])
+            w2 = np.linalg.norm(b[1] - b[2])
+            w3 = np.linalg.norm(b[2] - b[3])
+            w4 = np.linalg.norm(b[3] - b[0])
+
+            w = int(max(w1, w3))
+            h = int(max(w2, w4))
+            pts2 = np.float32([[0,0],[w,0],[w,h],[0, h]])
+
+            M = cv2.getPerspectiveTransform(boxes, pts2)
+            dst = cv2.warpPerspective(temp, M, (w, h))
+            cv2.imwrite(f"./custom_feed/{text[0]}_trans.png", cv2.cvtColor(dst, cv2.COLOR_RGB2BGR))
+            x1, y1, x2, y2 = expand_bbox([x1, y1, x2, y2], self.img.shape, 0.3 * (y2-y1)/(x2-x1), 0.3)
+            # temp = cv2.rectangle(temp, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
             sub_img = self.img[y1:y2, x1:x2].copy()
             roi = Roi(i, sub_img, [x1, y1, x2, y2],
                       text[0], angle[0], self.model_factory)
             self.rois.append(roi)
         print(self.rois)
+        temp = cv2.cvtColor(temp, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(f"./custom_feed/{img_name}_bbox.png", temp)
 
     def create_mask(self):
         mask = np.zeros((self.img.shape[0], self.img.shape[1]), dtype="uint8")
         total_area = mask.shape[0] * mask.shape[1]
         for roi in self.rois:
-            img, bbox = roi.get_abs_inner_box()
-            x1, y1, x2, y2 = bbox.get()
+            x1, y1, x2, y2 = roi.bbox.get()
             area = (y2-y1)*(x2-x1)
             if area/total_area < 0.01 or (y2-y1)/mask.shape[0] < 0.06 or (x2-x1)/mask.shape[1] < 0.05:
-                x1, y1, x2, y2 = roi.bbox.get()
                 mask[y1:y2, x1:x2] = 255
             else:
-                mask[y1:y2, x1:x2] = img
-        cv2.imwrite(f"./custom_feed/poster_mask.png", mask)
+                mask[y1:y2, x1:x2] = np.maximum(mask[y1:y2, x1:x2], roi.mask)
+        cv2.imwrite(f"./custom_feed/{img_name}_mask.png", mask)
         return mask
 
     def extract_background(self):
@@ -416,7 +492,7 @@ class TextSwapper:
         res_img = res_img[0]
         self.bg_img = res_img
         res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite("./custom_feed/poster_bg.png", res_img)
+        cv2.imwrite(f"./custom_feed/{img_name}_bg.png", res_img)
 
     def update_bg(self):
         for roi in self.rois:
@@ -429,15 +505,17 @@ class TextSwapper:
         result_img = self.bg_img.copy()
         for roi in self.rois:
             x1, y1, x2, y2 = roi.bbox.get()
-            result_img[y1:y2, x1:x2] = roi.fuse_img
+            # result_img[y1:y2, x1:x2] = roi.fuse_img
+            bg_img = result_img[y1:y2, x1:x2]
+            result_img[y1:y2, x1:x2] = roi.fuse_img * roi.target_mask_np + (1 - roi.target_mask_np) * bg_img
         result_img = cv2.cvtColor(result_img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(f"./custom_feed/poster_fuse.png", result_img)
+        cv2.imwrite(f"./custom_feed/{img_name}_fuse.png", result_img)
         return result_img
 
 
 if __name__ == "__main__":
     model_factory = ModelFactory("./weights", "./fonts")
-    img = cv2.imread("./custom_feed/poster.png")
+    img = cv2.imread(f"./custom_feed/{img_name}.png")
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     text_swapper = TextSwapper(model_factory, img)
     text_swapper.detect_text()
