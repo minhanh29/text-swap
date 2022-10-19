@@ -126,6 +126,7 @@ class ModelFactory:
 
         self.font_clf = FontClassifier(in_channels=1, num_classes=len(self.font_list)).to(self.device)
         checkpoint = torch.load(os.path.join(model_dir, "font_classifier.pth"), map_location=self.device)
+        # checkpoint = torch.load(os.path.join(model_dir, "font_classifier_old.pth"), map_location=self.device)
         self.font_clf.load_state_dict(checkpoint['model'])
         self.font_clf.eval()
 
