@@ -22,9 +22,8 @@ from lama import Inpainter
 from googletrans import Translator
 
 
-img_name = "poster6"
+img_name = "street1"
 height = 64
-PADDING = 3
 
 pil_to_tensor = transforms.Compose([
     transforms.PILToTensor(),
@@ -179,7 +178,7 @@ class ModelFactory:
         self.translator = Translator()
 
     def translate(self, text):
-        return self.translator.translate(text, dest="vi").text
+        return self.translator.translate(text.lower(), src="en", dest="vi").text
 
     def detect_text(self, img):
         '''
@@ -249,6 +248,9 @@ class BBox:
     def get(self):
         return self.x1, self.y1, self.x2, self.y2
 
+    def crop(self, img):
+        return img[self.y1:self.y2, self.x1:self.x2]
+
     def abs_inner(self, innerBox):
         x1, y1, x2, y2 = innerBox.get()
         return BBox(self.x1 + x1, self.y1 + y1, self.x1 + x2, self.y1 + y2)
@@ -266,32 +268,100 @@ class BBox:
         return self.__str__()
 
 
-class Roi:
-    def __init__(self, id, sub_img, bbox, text, angle, model_factory):
-        self.id = id
+class SkewBBox:
+    def __init__(self, boxes, img_shape):
+        b = boxes.astype("int32")
 
-        self.img = sub_img
+        w1 = np.linalg.norm(b[0] - b[1])
+        w2 = np.linalg.norm(b[1] - b[2])
+        w3 = np.linalg.norm(b[2] - b[3])
+        w4 = np.linalg.norm(b[3] - b[0])
+
+        w = max(w1, w3)
+        h = max(w2, w4)
+
+        boxes = expand_bbox_perspec(boxes, img_shape, w, h, 0.3 * h / w, 0.3)
+        b = boxes.astype("int32")
+
+        x1 = np.min(b[:, 0])
+        x2 = np.max(b[:, 0])
+        y1 = np.min(b[:, 1])
+        y2 = np.max(b[:, 1])
+        self.bbox = BBox(x1, y1, x2, y2)
+
+        w1 = np.linalg.norm(b[0] - b[1])
+        w2 = np.linalg.norm(b[1] - b[2])
+        w3 = np.linalg.norm(b[2] - b[3])
+        w4 = np.linalg.norm(b[3] - b[0])
+
+        self.w = int(max(w1, w3))
+        self.h = int(max(w2, w4))
+
+        self.pts1 = boxes.copy()
+        self.pts1[:, 0] = self.pts1[:, 0] - x1
+        self.pts1[:, 1] = self.pts1[:, 1] - y1
+        self.pts2 = np.float32([[0, 0],
+                                [self.w, 0],
+                                [self.w, self.h],
+                                [0, self.h]])
+
+        self.tranform_matrix = cv2.getPerspectiveTransform(self.pts1, self.pts2)
+        self.tranform_matrix_inverse = cv2.getPerspectiveTransform(self.pts2, self.pts1)
+
+    def transform(self, img):
+        return cv2.warpPerspective(img, self.tranform_matrix, (self.w, self.h))
+
+    def transform_inverse(self, img):
+        return cv2.warpPerspective(img, self.tranform_matrix_inverse,
+                                   (self.bbox.width(), self.bbox.height()))
+
+    def width(self):
+        return self.w
+
+    def height(self):
+        return self.h
+
+    def __str__(self):
+        return f"{self.pts1}"
+
+    def __repr__(self):
+        return self.__str__()
+
+
+class Roi:
+    def __init__(self, id, img, boxes, text, angle, model_factory):
+        self.text = text
+        self.angle = angle
+        self.model_factory = model_factory
+        self.translated_text = self.model_factory.translate(self.text)
+        self.process = True
+        if self.translated_text.lower().strip() == self.text.lower().strip():
+            print("Equal ========")
+            print(self.text)
+            print(self.translated_text)
+            self.process = False
+            return
+
+        self.id = id
+        self.skew_bbox = SkewBBox(boxes, img.shape)
+
+        crop_img = self.skew_bbox.bbox.crop(img)
+        self.img = self.skew_bbox.transform(crop_img)
         torch_img = torch.as_tensor(self.img)
         torch_img = torch.permute(torch_img, (2, 0, 1))
         self.torch_img = torch_img.float()
-
-        self.bbox = BBox(*bbox)
-        tb = TextBlob(text.lower())
-        self.text = tb.correct()
-        self.angle = angle
-        self.model_factory = model_factory
-
-        self.bg_torch_img = sub_img
+        self.bg_torch_img = self.img
 
         self.extract_mask()
         self.find_bounding_rect()
         self.detect_font()
-        self.create_target_text(self.model_factory.translate(self.text))
+        self.create_target_text(self.translated_text)
 
     def update_bg(self, new_full_img):
-        x1, y1, x2, y2 = self.bbox.get()
-        self.bg_img = new_full_img[y1:y2, x1:x2].copy()
-        bg_img = new_full_img[y1:y2, x1:x2].copy()
+        new_bg = self.skew_bbox.bbox.crop(new_full_img)
+        new_bg = self.skew_bbox.transform(new_bg)
+        self.bg_img = new_bg.copy()
+        bg_img = new_bg.copy()
         bg_torch_img = torch.as_tensor(bg_img)
         bg_torch_img = torch.permute(bg_torch_img, (2, 0, 1))
         self.bg_torch_img = bg_torch_img.float()
@@ -302,15 +372,28 @@ class Roi:
         torch_mask = torch_mask.detach()
         mask = torch.permute(torch_mask, (1, 2, 0)).numpy()
         mask = (mask * 255).astype("uint8")
-        _, torch_mask = cv2.threshold(mask, 120, 255, cv2.THRESH_TOZERO)
-        torch_mask = torch_mask.astype("float32")/255.
+        cv2.imwrite(f"custom_feed/{self.text.split('/')[0]}.png", mask)
+        _, mask = cv2.threshold(mask, 120, 255, cv2.THRESH_TOZERO)
+        torch_mask = mask.astype("float32")/255.
         torch_mask = torch.from_numpy(np.expand_dims(torch_mask, axis=-1))
         self.torch_mask = torch.permute(torch_mask, (2, 0, 1))
-        mask[mask > 120] = 255
         kernel = np.ones((5, 5), np.uint8)
-        mask = cv2.dilate(mask, kernel, iterations=3)
+        mask = cv2.dilate(mask, kernel, iterations=2)
         mask = cv2.resize(mask, (self.img.shape[1], self.img.shape[0]))
         self.mask = mask
+
+    def get_mask_and_bbox(self, img_width, img_height, total_area):
+        area = self.skew_bbox.width() * self.skew_bbox.height()
+        if area/total_area < 0.01 or self.skew_bbox.height()/img_height < 0.06 or self.skew_bbox.width()/img_width < 0.05:
+            kernel = np.ones((5, 5), np.uint8)
+            mask = cv2.dilate(self.mask, kernel, iterations=1)
+            return self.skew_bbox.transform_inverse(mask), self.skew_bbox.bbox.get()
+        return self.skew_bbox.transform_inverse(self.mask), self.skew_bbox.bbox.get()
+
+    def get_fuse_mask_and_bbox(self):
+        return self.skew_bbox.transform_inverse(self.fuse_img), \
+            self.skew_bbox.transform_inverse(self.target_mask_np), \
+            self.skew_bbox.bbox.get()
 
     def find_bounding_rect(self):
         x, y, w, h = cv2.boundingRect(self.mask)
@@ -382,7 +465,6 @@ class Roi:
         draw.text((canvas_width//2, text_h + (canvas_height-text_h)//2), text, font=myFont, fill=(255, 255, 255), anchor="mb")
         self.target_mask_np = np.array(img).astype("float32")/255.
         res_img = img.resize((self.torch_mask.shape[2], self.torch_mask.shape[1]))
-        res_img.save(f"custom_feed/{self.text.split('/')[0]}.png")
         self.target_mask = pil_to_tensor(res_img).float() / 255.
 
     def fuse_img(self):
@@ -394,19 +476,16 @@ class Roi:
         fuse_img = F.to_pil_image((fuse_img + 1)/2)
         fuse_img = np.array(fuse_img)
         fuse_img = cv2.resize(fuse_img, (self.bg_img.shape[1], self.bg_img.shape[0]))
-        # fuse_img = fuse_img * self.target_mask_np + (1 - self.target_mask_np) * self.bg_img
         self.fuse_img = fuse_img
 
     def __str__(self):
         result = f"""
 
         =====================
-        Bbox: {self.bbox}
+        Bbox: {self.skew_bbox}
         Text: {self.text}
         Angle: {self.angle}
         """
-        # cv2.imwrite(f"./custom_feed/{self.id}.png", self.img)
-        # cv2.imwrite(f"./custom_feed/{self.id}_mask.png", self.mask)
         return result
 
     def __repr__(self):
@@ -427,89 +506,50 @@ class TextSwapper:
             boxes, text, angle = item
             if text[1] < 0.7:
                 continue
+
             boxes = np.float32(boxes)
-            x1 = np.min(boxes[:, 0])
-            x2 = np.max(boxes[:, 0])
-            y1 = np.min(boxes[:, 1])
-            y2 = np.max(boxes[:, 1])
-
-            b = boxes.astype("int32")
-
-            w1 = np.linalg.norm(b[0] - b[1])
-            w2 = np.linalg.norm(b[1] - b[2])
-            w3 = np.linalg.norm(b[2] - b[3])
-            w4 = np.linalg.norm(b[3] - b[0])
-
-            w = max(w1, w3)
-            h = max(w2, w4)
-
-            boxes = expand_bbox_perspec(boxes, self.img.shape, w, h, 0.3 * h / w, 0.3)
-            b = boxes.astype("int32")
-
-            temp = cv2.line(temp, b[0], b[1], (0, 0, 255), 2)
-            temp = cv2.line(temp, b[1], b[2], (0, 0, 255), 2)
-            temp = cv2.line(temp, b[2], b[3], (0, 0, 255), 2)
-            temp = cv2.line(temp, b[3], b[0], (0, 0, 255), 2)
-
-            w1 = np.linalg.norm(b[0] - b[1])
-            w2 = np.linalg.norm(b[1] - b[2])
-            w3 = np.linalg.norm(b[2] - b[3])
-            w4 = np.linalg.norm(b[3] - b[0])
-
-            w = int(max(w1, w3))
-            h = int(max(w2, w4))
-            pts2 = np.float32([[0,0],[w,0],[w,h],[0, h]])
-
-            M = cv2.getPerspectiveTransform(boxes, pts2)
-            dst = cv2.warpPerspective(temp, M, (w, h))
-            cv2.imwrite(f"./custom_feed/{text[0]}_trans.png", cv2.cvtColor(dst, cv2.COLOR_RGB2BGR))
-            x1, y1, x2, y2 = expand_bbox([x1, y1, x2, y2], self.img.shape, 0.3 * (y2-y1)/(x2-x1), 0.3)
-            # temp = cv2.rectangle(temp, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
-            sub_img = self.img[y1:y2, x1:x2].copy()
-            roi = Roi(i, sub_img, [x1, y1, x2, y2],
-                      text[0], angle[0], self.model_factory)
-            self.rois.append(roi)
+            roi = Roi(i, img, boxes, text[0], angle[0], self.model_factory)
+            if roi.process:
+                self.rois.append(roi)
         print(self.rois)
         temp = cv2.cvtColor(temp, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(f"./custom_feed/{img_name}_bbox.png", temp)
 
     def create_mask(self):
         mask = np.zeros((self.img.shape[0], self.img.shape[1]), dtype="uint8")
         total_area = mask.shape[0] * mask.shape[1]
         for roi in self.rois:
-            x1, y1, x2, y2 = roi.bbox.get()
-            area = (y2-y1)*(x2-x1)
-            if area/total_area < 0.01 or (y2-y1)/mask.shape[0] < 0.06 or (x2-x1)/mask.shape[1] < 0.05:
-                mask[y1:y2, x1:x2] = 255
-            else:
-                mask[y1:y2, x1:x2] = np.maximum(mask[y1:y2, x1:x2], roi.mask)
+            roi_mask, (x1, y1, x2, y2) = roi.get_mask_and_bbox(mask.shape[1], mask.shape[0], total_area)
+            mask[y1:y2, x1:x2] = np.maximum(mask[y1:y2, x1:x2], roi_mask)
         cv2.imwrite(f"./custom_feed/{img_name}_mask.png", mask)
         return mask
 
     def extract_background(self):
+        print("Extracting background...")
         mask = self.create_mask()
         res_img = self.model_factory.extract_background([self.img], [mask])
         res_img = res_img[0]
         self.bg_img = res_img
         res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR)
         cv2.imwrite(f"./custom_feed/{img_name}_bg.png", res_img)
+        print("Done")
 
     def update_bg(self):
         for roi in self.rois:
             roi.update_bg(self.bg_img)
 
     def fuse_img(self):
+        print("Fusing...")
         for roi in self.rois:
             roi.fuse_img()
 
         result_img = self.bg_img.copy()
         for roi in self.rois:
-            x1, y1, x2, y2 = roi.bbox.get()
-            # result_img[y1:y2, x1:x2] = roi.fuse_img
+            roi_fuse_img, mask, (x1, y1, x2, y2) = roi.get_fuse_mask_and_bbox()
             bg_img = result_img[y1:y2, x1:x2]
-            result_img[y1:y2, x1:x2] = roi.fuse_img * roi.target_mask_np + (1 - roi.target_mask_np) * bg_img
+            result_img[y1:y2, x1:x2] = roi_fuse_img * mask + (1 - mask) * bg_img
         result_img = cv2.cvtColor(result_img, cv2.COLOR_RGB2BGR)
         cv2.imwrite(f"./custom_feed/{img_name}_fuse.png", result_img)
+        print("Done")
         return result_img
 
 
