@@ -28,7 +28,7 @@ def load_checkpoint(train_config, path, map_location='cuda', strict=True):
     state = torch.load(path, map_location=map_location)
     model.load_state_dict(state['state_dict'], strict=strict)
     model.on_load_checkpoint(state)
-    torch.save({
-        "state_dict": model.state_dict()
-    }, "./weights/test_lama.pth")
+    # torch.save({
+    #     "state_dict": model.state_dict()
+    # }, "./weights/big-lama/lama.pth")
     return model

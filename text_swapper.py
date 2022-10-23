@@ -17,10 +17,13 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms.functional as F
 from torchvision import transforms
 from PIL import Image, ImageDraw, ImageFont
-from paddleocr import PaddleOCR, draw_ocr
+# from paddleocr import PaddleOCR, draw_ocr
 from lama import Inpainter
 from googletrans import Translator
 
+import io
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./keys/text-replace-366410-b1df0306b203.json"
+from google.cloud import vision
 
 img_name = "street1"
 height = 64
@@ -109,6 +112,9 @@ def expand_bbox(bbox, img_shape, w_ratio=0.1, h_ratio=0.3):
 def expand_bbox_perspec(box, img_shape, w, h, w_ratio=0.1, h_ratio=0.3):
     padding_w = int(w * w_ratio)
     padding_h = int(h * h_ratio)
+    padding_w = max(5, padding_w)
+    padding_h = max(5, padding_h)
+    print("PAdding", padding_w, padding_h)
 
     v10 = normalize(box[0] - box[1])
     v30 = normalize(box[0] - box[3])
@@ -146,12 +152,12 @@ class ModelFactory:
         self.font_list = [f.strip().split("|")[-1] for f in font_list]
 
         self.device = torch.device("cpu")
-        self.ocr = PaddleOCR(use_angle_cls=True, lang='en',
-                             # det_model_dir=os.path.join(model_dir, "en_PP-OCRv3_det_infer"),
-                             # rec_model_dir=os.path.join(model_dir, "en_PP-OCRv3_rec_infer"),
-                             det_model_dir=os.path.join(model_dir, "ch_ppocr_server_v2.0_det_infer"),
-                             rec_model_dir=os.path.join(model_dir, "en_PP-OCRv3_rec_infer"),
-                             cls_model_dir=os.path.join(model_dir, "ch_ppocr_mobile_v2.0_cls_infer"))
+        # self.ocr = PaddleOCR(use_angle_cls=True, lang='en',
+        #                      # det_model_dir=os.path.join(model_dir, "en_PP-OCRv3_det_infer"),
+        #                      # rec_model_dir=os.path.join(model_dir, "en_PP-OCRv3_rec_infer"),
+        #                      det_model_dir=os.path.join(model_dir, "ch_ppocr_server_v2.0_det_infer"),
+        #                      rec_model_dir=os.path.join(model_dir, "en_PP-OCRv3_rec_infer"),
+        #                      cls_model_dir=os.path.join(model_dir, "ch_ppocr_mobile_v2.0_cls_infer"))
 
         self.mask_net = mask_extraction_net(in_channels = 3).to(self.device)
         checkpoint = torch.load(os.path.join(model_dir, "mask_net.pth"), map_location=self.device)
@@ -164,6 +170,7 @@ class ModelFactory:
         self.fusion_net.eval()
 
         self.inpainter = Inpainter(os.path.join(model_dir, "lama-fourier"))
+        # self.inpainter = Inpainter(os.path.join(model_dir, "big-lama"))
 
         self.font_clf = FontClassifier(in_channels=1, num_classes=len(self.font_list)).to(self.device)
         checkpoint = torch.load(os.path.join(model_dir, "font_classifier.pth"), map_location=self.device)
@@ -176,20 +183,47 @@ class ModelFactory:
         self.exclude_list = np.array([147, 38, 39, 14, 15, 127, 128, 129, 91, 223])
 
         self.translator = Translator()
+        self.ocr_client = vision.ImageAnnotatorClient()
 
     def translate(self, text):
         return self.translator.translate(text.lower(), src="en", dest="vi").text
 
-    def detect_text(self, img):
-        '''
-        img: BGR image
-        '''
-        return self.ocr.ocr(img, cls=True)
+    def detect_text(self, img_path):
+        # Loads the image into memory
+        with io.open(img_path, 'rb') as image_file:
+            content = image_file.read()
+
+        image = vision.Image(content=content)
+
+        response = self.ocr_client.text_detection(image=image)
+        texts = response.text_annotations
+        print('Texts:')
+
+        result = []
+        for i, text in enumerate(texts):
+            print(text.description)
+            if i == 0:
+                continue
+
+            vertices = ([[vertex.x, vertex.y]
+                        for vertex in text.bounding_poly.vertices])
+
+            print("bounds", vertices)
+            boxes = np.array(vertices)
+            result.append([boxes, text.description, 0])
+        return result
+
+    # def detect_text(self, img):
+    #     '''
+    #     img: BGR image
+    #     '''
+    #     return self.ocr.ocr(img, cls=True)
 
     def extract_background(self, img_list, mask_list):
         new_img_list = []
         new_mask_list = []
         for img, mask in zip(img_list, mask_list):
+            # img = cv2.inpaint(img, mask, 3, cv2.INPAINT_TELEA)
             img = np.transpose(img, (2, 0, 1))
             img = img.astype('float32') / 255
             mask = mask.astype('float32') / 255
@@ -282,6 +316,7 @@ class SkewBBox:
 
         boxes = expand_bbox_perspec(boxes, img_shape, w, h, 0.3 * h / w, 0.3)
         b = boxes.astype("int32")
+        self.b = b
 
         x1 = np.min(b[:, 0])
         x2 = np.max(b[:, 0])
@@ -350,8 +385,22 @@ class Roi:
         torch_img = torch.as_tensor(self.img)
         torch_img = torch.permute(torch_img, (2, 0, 1))
         self.torch_img = torch_img.float()
-        self.bg_torch_img = self.img
+        self.refine_coords(img)
 
+    def refine_coords(self, img):
+        self.extract_mask()
+        boxes = self.find_skew_bounding_rect()
+        self.b = boxes
+        # self.skew_bbox = SkewBBox(boxes, img.shape)
+
+        # crop_img = self.skew_bbox.bbox.crop(img)
+        # self.img = self.skew_bbox.transform(crop_img)
+        # torch_img = torch.as_tensor(self.img)
+        # torch_img = torch.permute(torch_img, (2, 0, 1))
+        # self.torch_img = torch_img.float()
+        # self.bg_torch_img = self.img
+
+    def preprocess(self):
         self.extract_mask()
         self.find_bounding_rect()
         self.detect_font()
@@ -372,22 +421,39 @@ class Roi:
         torch_mask = torch_mask.detach()
         mask = torch.permute(torch_mask, (1, 2, 0)).numpy()
         mask = (mask * 255).astype("uint8")
-        cv2.imwrite(f"custom_feed/{self.text.split('/')[0]}.png", mask)
         _, mask = cv2.threshold(mask, 120, 255, cv2.THRESH_TOZERO)
+        self.normal_mask = mask
+        # cv2.imwrite(f"custom_feed/{self.text.split('/')[0]}.png", mask)
         torch_mask = mask.astype("float32")/255.
         torch_mask = torch.from_numpy(np.expand_dims(torch_mask, axis=-1))
         self.torch_mask = torch.permute(torch_mask, (2, 0, 1))
+
+        # if self.skew_bbox.height() < 25 or self.skew_bbox.width() < 25:
+        #     kernel = np.ones((11, 11), np.uint8)
+        #     mask = cv2.dilate(mask, kernel, iterations=2)
+        #     print("Dilate More", self.text)
+        # else:
+        #     kernel = np.ones((5, 5), np.uint8)
+        #     mask = cv2.dilate(mask, kernel, iterations=2)
+
         kernel = np.ones((5, 5), np.uint8)
         mask = cv2.dilate(mask, kernel, iterations=2)
         mask = cv2.resize(mask, (self.img.shape[1], self.img.shape[0]))
         self.mask = mask
 
     def get_mask_and_bbox(self, img_width, img_height, total_area):
-        area = self.skew_bbox.width() * self.skew_bbox.height()
-        if area/total_area < 0.01 or self.skew_bbox.height()/img_height < 0.06 or self.skew_bbox.width()/img_width < 0.05:
-            kernel = np.ones((5, 5), np.uint8)
-            mask = cv2.dilate(self.mask, kernel, iterations=1)
+        if self.skew_bbox.height() < 25 or self.skew_bbox.width() < 25:
+            mask = np.zeros_like(self.mask) + 255
+            mask = mask.astype("uint8")
             return self.skew_bbox.transform_inverse(mask), self.skew_bbox.bbox.get()
+
+        if self.skew_bbox.height() < 35 or self.skew_bbox.width() < 35:
+            mask = np.zeros_like(self.mask)
+            x1, y1, x2, y2 = self.minBbox.get()
+            mask[y1:y2, x1:x2] = 255
+            mask = mask.astype("uint8")
+            return self.skew_bbox.transform_inverse(mask), self.skew_bbox.bbox.get()
+
         return self.skew_bbox.transform_inverse(self.mask), self.skew_bbox.bbox.get()
 
     def get_fuse_mask_and_bbox(self):
@@ -398,14 +464,32 @@ class Roi:
     def find_bounding_rect(self):
         x, y, w, h = cv2.boundingRect(self.mask)
         x1, y1, x2, y2 = expand_bbox([x, y, x+w, y+h], self.mask.shape,
-                                     w_ratio=0.05, h_ratio=0.1)
+                                     w_ratio=0.2 * w/(h + 1), h_ratio=0.1)
         self.minBbox = BBox(x1, y1, x2, y2)
 
-    def get_abs_inner_box(self):
-        x1, y1, x2, y2 = self.minBbox.get()
-        img = self.mask[y1:y2, x1:x2]
+    def find_skew_bounding_rect(self):
+        mask = self.skew_bbox.transform_inverse(self.normal_mask)
+        kernel = np.ones((3, 3), np.uint8)
+        mask = cv2.erode(mask, kernel, iterations=1)
+        mask = cv2.dilate(mask, kernel, iterations=1)
+        maskBGR = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
 
-        return img, self.bbox.abs_inner(self.minBbox)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # coords = np.column_stack(np.where(mask > 0))
+        # (x, y), (w, h), a = cv2.minAreaRect(coords)
+        # box = cv2.boxPoints(((x, y), (w, h), a))
+        # box = np.int0(box)
+        # box = np.flip(box, axis=-1)
+        b = box
+        cv2.line(maskBGR, b[0], b[1], (0, 0, 255), 2)
+        cv2.line(maskBGR, b[1], b[2], (0, 0, 255), 2)
+        cv2.line(maskBGR, b[2], b[3], (0, 0, 255), 2)
+        cv2.line(maskBGR, b[3], b[0], (0, 0, 255), 2)
+        cv2.imwrite(f"custom_feed/{self.text.split('/')[0]}.png", maskBGR)
+
+        box[:, 0] = box[:, 0] + self.skew_bbox.bbox.x1
+        box[:, 1] = box[:, 1] + self.skew_bbox.bbox.y1
+        return box
 
     def detect_font(self):
         self.font_path = self.model_factory.detect_font(torch.unsqueeze(self.torch_mask, dim=0))[0]
@@ -420,7 +504,6 @@ class Roi:
         target_w = min(self.minBbox.width(), target_w)
         target_h = min(self.minBbox.height(), target_h)
         target_shape = (target_w, target_h)
-        print("Target", target_shape, shape)
 
         fontsize = 30
         pre_remain = None
@@ -483,6 +566,8 @@ class Roi:
 
         =====================
         Bbox: {self.skew_bbox}
+        Width: {self.skew_bbox.width()}
+        Height: {self.skew_bbox.height()}
         Text: {self.text}
         Angle: {self.angle}
         """
@@ -498,21 +583,31 @@ class TextSwapper:
         self.img = img
         self.rois = []
 
-    def detect_text(self):
-        result = self.model_factory.detect_text(self.img)
+    def detect_text(self, img_path):
+        # result = self.model_factory.detect_text(self.img)
+        result = self.model_factory.detect_text(img_path)
         temp = self.img.copy()
         for i, item in enumerate(result):
             print(item)
             boxes, text, angle = item
-            if text[1] < 0.7:
-                continue
+            # if text[1] < 0.7:
+            #     continue
 
             boxes = np.float32(boxes)
-            roi = Roi(i, img, boxes, text[0], angle[0], self.model_factory)
+            roi = Roi(i, img, boxes, text, angle, self.model_factory)
             if roi.process:
-                self.rois.append(roi)
+                # roi.preprocess()
+                # self.rois.append(roi)
+
+                b = roi.b
+                cv2.line(temp, b[0], b[1], (0, 0, 255), 2)
+                cv2.line(temp, b[1], b[2], (0, 0, 255), 2)
+                cv2.line(temp, b[2], b[3], (0, 0, 255), 2)
+                cv2.line(temp, b[3], b[0], (0, 0, 255), 2)
+
         print(self.rois)
         temp = cv2.cvtColor(temp, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(f"./custom_feed/{img_name}_bbox.png", temp)
 
     def create_mask(self):
         mask = np.zeros((self.img.shape[0], self.img.shape[1]), dtype="uint8")
@@ -555,10 +650,11 @@ class TextSwapper:
 
 if __name__ == "__main__":
     model_factory = ModelFactory("./weights", "./fonts")
-    img = cv2.imread(f"./custom_feed/{img_name}.png")
+    img_path = f"./custom_feed/{img_name}.png"
+    img = cv2.imread(img_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     text_swapper = TextSwapper(model_factory, img)
-    text_swapper.detect_text()
-    text_swapper.extract_background()
-    text_swapper.update_bg()
-    text_swapper.fuse_img()
+    text_swapper.detect_text(img_path)
+    # text_swapper.extract_background()
+    # text_swapper.update_bg()
+    # text_swapper.fuse_img()

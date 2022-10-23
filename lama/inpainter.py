@@ -31,6 +31,7 @@ class Inpainter:
         train_config.visualizer.kind = 'noop'
 
         checkpoint_path = os.path.join(model_path, "lama.pth")
+        # checkpoint_path = os.path.join(model_path, "best.ckpt")
         self.model = load_checkpoint(train_config, checkpoint_path, strict=False, map_location='cpu')
         self.model.freeze()
         self.model.to(self.device)
